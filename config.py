@@ -35,7 +35,7 @@ CONFIG = {  # 全局配置字典
                 "name": 'Doubao',  # 预设名称
                 "alias": '小豆', # 模型别名
                 "base_url": 'https://ark.cn-beijing.volces.com/api/v3',  # 接口地址
-                "api_key": "",  # 接口密钥
+                "api_key": "YOUR_DOUBAO_KEY",  # 接口密钥
                 "model": 'doubao-seed-1-6-251015',  # 模型名称
                 "timeout_sec": 10,  # 超时时间（秒）
                 "max_retries": 2,  # 失败重试次数
@@ -157,7 +157,7 @@ CONFIG = {  # 全局配置字典
                 "name": 'Zhipu',  # 预设名称
                 "alias": '小G', # 模型别名
                 "base_url": 'https://open.bigmodel.cn/api/paas/v4',  # 接口地址
-                "api_key": "",  # 接口密钥
+                "api_key": "YOUR_ZHIPU_KEY",  # 接口密钥
                 "model": 'glm-4.5-air',  # 模型名称
                 "timeout_sec": 10,  # 超时时间（秒）
                 "max_retries": 2,  # 失败重试次数
@@ -173,6 +173,7 @@ CONFIG = {  # 全局配置字典
         "system_prompt": (  # 系统提示词（人设与规则）
             "你是由主人训练的AI分身，名字叫'AI小助手'。你的设定是一个高情商、幽默且风趣的私人助理。"
             "你现在的任务是代表主人在微信上回复消息。\n\n"
+            "以下是与该用户的历史对话记录，请参考这些上下文进行回复：\n{history_context}\n\n"
             "【核心人设】\n"
             "1. 说话风格：像真人发微信一样，口语化、接地气。可以适度使用“哈哈”、“嗯嗯”等语气词，但不要滥用。尽量不使用网络梗，可以使用emoji但尽量少用。\n"
             "2. 回复长度：微信聊天通常很短。请尽量将回复控制在1-2句话以内，严禁长篇大论或像写邮件一样说话。\n"
@@ -191,6 +192,8 @@ CONFIG = {  # 全局配置字典
         "emoji_replacements": {},  # 自定义 emoji -> 微信表情文本
         "voice_to_text": True,  # 语音转文字（使用微信内置“语音转文字”）
         "voice_to_text_fail_reply": "",  # 转写失败时回复文本，留空则不回复
+        "memory_db_path": "chat_history.db",  # SQLite 记忆库路径
+        "memory_context_limit": 20,  # 每次注入的历史条数（0 表示禁用）
         "context_rounds": 5,  # 上下文保留轮数
         "context_max_tokens": None,  # 估算 token 上限（优先于轮数裁剪）
         "history_max_chats": 200,  # 最多保留的会话数，防止内存膨胀
@@ -238,3 +241,39 @@ CONFIG = {  # 全局配置字典
         "log_reply_content": True,  # 是否记录回复内容
     },
 }
+
+
+def _load_api_keys():
+    try:
+        from api_keys import API_KEYS
+    except Exception:
+        return {}
+    if isinstance(API_KEYS, dict):
+        return API_KEYS
+    return {}
+
+
+def _apply_api_keys(config: dict) -> None:
+    api_keys = _load_api_keys()
+    if not api_keys:
+        return
+    api_cfg = config.get("api")
+    if not isinstance(api_cfg, dict):
+        return
+    default_key = api_keys.get("default")
+    if default_key:
+        api_cfg["api_key"] = default_key
+    preset_keys = api_keys.get("presets")
+    if isinstance(preset_keys, dict):
+        for preset in api_cfg.get("presets") or []:
+            if not isinstance(preset, dict):
+                continue
+            name = preset.get("name")
+            if not name:
+                continue
+            key = preset_keys.get(name)
+            if key:
+                preset["api_key"] = key
+
+
+_apply_api_keys(CONFIG)

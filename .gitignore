@@ -1,0 +1,5 @@
+api_keys.py
+__pycache__/
+.venv/
+.idea/
+wxauto_logs/

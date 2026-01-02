@@ -442,6 +442,21 @@ def format_user_text(event: MessageEvent, bot_cfg: Dict[str, Any]) -> str:
     return event.content
 
 
+def build_history_context_text(messages: List[dict]) -> str:
+    if not messages:
+        return ""
+    lines: List[str] = []
+    for msg in messages:
+        if not isinstance(msg, dict):
+            continue
+        role = str(msg.get("role", "") or "").strip()
+        content = str(msg.get("content", "") or "").strip()
+        if not role or not content:
+            continue
+        lines.append(f"{role}: {content}")
+    return "\n".join(lines)
+
+
 def truncate_text(text: str, max_len: int = 120) -> str:
     if text is None:
         return ""
@@ -1210,6 +1225,11 @@ async def main() -> None:
                     else f"friend:{event.chat_name}"
                 )
                 recent_context: List[dict] = []
+                if memory and user_text.strip():
+                    try:
+                        memory.add_message(chat_id, "user", user_text)
+                    except Exception as exc:
+                        logging.warning("memory write failed: %s", exc)
                 if memory and memory_context_limit > 0:
                     try:
                         recent_context = memory.get_recent_context(
@@ -1217,12 +1237,14 @@ async def main() -> None:
                         )
                     except Exception as exc:
                         logging.warning("memory load failed: %s", exc)
-                if memory and user_text.strip():
-                    try:
-                        memory.add_message(chat_id, "user", user_text)
-                    except Exception as exc:
-                        logging.warning("memory write failed: %s", exc)
+                memory_context = recent_context
+                history_context_text = build_history_context_text(recent_context)
                 system_prompt = resolve_system_prompt(event, bot_cfg)
+                if "{history_context}" in system_prompt:
+                    system_prompt = system_prompt.replace(
+                        "{history_context}", history_context_text
+                    )
+                    memory_context = []
                 reply_suffix_template = bot_cfg.get("reply_suffix")
                 reply_suffix = ""
                 if reply_suffix_template is not None:
@@ -1243,7 +1265,7 @@ async def main() -> None:
                         chat_id,
                         user_text,
                         system_prompt,
-                        memory_context=recent_context,
+                        memory_context=memory_context,
                     )
                     if stream_iter:
                         used_stream = True
@@ -1437,7 +1459,7 @@ async def main() -> None:
                         chat_id,
                         user_text,
                         system_prompt,
-                        memory_context=recent_context,
+                        memory_context=memory_context,
                     )
                     if not reply:
                         return
