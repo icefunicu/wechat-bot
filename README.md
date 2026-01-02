@@ -9,7 +9,7 @@
 - 语音转文字：调用微信内置“语音转文字”（可开关，失败可回退回复）
 - 回复策略丰富：流式输出、分段发送、随机延迟、最小回复间隔
 - 消息合并：短时间内连发消息自动合并，避免多次触发模型
-- 记忆与上下文：AI 内存（按轮数/估算 token 裁剪）+ SQLite 记忆库注入
+- 记忆与上下文：AI 内存（按轮数/估算 token 裁剪）+ SQLite 记忆库注入（支持 TTL 自动清理）
 - 过滤与白名单：忽略公众号/服务号/关键词/会话名，群聊白名单与 @ 控制
 - 热更新与重连：`config.py` 定时热重载，可重载 AI 客户端模块，掉线自动重连
 - 日志记录：可选记录消息/回复内容，日志文件自动轮转
@@ -94,6 +94,8 @@ API_KEYS = {
 - `history_max_chats`：内存中最多保留的会话数
 - `history_ttl_sec`：内存历史过期时间
 - `memory_db_path`：SQLite 记忆库路径
+- `memory_ttl_sec`：SQLite 记忆库保留时间
+- `memory_cleanup_interval_sec`：SQLite 记忆库清理间隔
 - `memory_context_limit`：每次注入的历史条数（0 表示禁用）
 - `memory_seed_on_first_reply`：首次回复时自动抓取最近聊天记录
 - `memory_seed_limit`：首次抓取的历史条数上限（0 表示禁用）
@@ -153,7 +155,7 @@ API_KEYS = {
 ## 运行产物与注意事项
 
 - 运行后会生成 `wxauto_logs/` 日志目录与 `chat_history.db` 记忆库
-- 建议将 `chat_history.db` 加入 `.gitignore`，避免提交敏感对话内容
+- 建议将 `chat_history.db` 加入 `.gitignore`，避免提交敏感对话内容；可通过 `memory_ttl_sec` 控制保留时长
 - 自动化存在风险，建议使用小号测试并合理设置回复频率
 
 ## 常见问题

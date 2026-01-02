@@ -12,8 +12,8 @@ CONFIG = {  # 全局配置字典
         "alias": '小欧', # 模型别名
         "timeout_sec": 10,  # 超时时间（秒）
         "max_retries": 2,  # 失败重试次数
-        "temperature": 0.7,  # 温度
-        "max_tokens": 1024,  # 最大生成长度
+        "temperature": 0.6,  # 温度
+        "max_tokens": 512,  # 最大生成长度
         "max_completion_tokens": None,  # Doubao 等模型使用的输出 token 上限
         "reasoning_effort": None,  # low/medium/high
         "allow_empty_key": False,  # 允许空密钥
@@ -27,8 +27,8 @@ CONFIG = {  # 全局配置字典
                 "model": 'gpt-4o-mini',  # 模型名称
                 "timeout_sec": 10,  # 超时时间（秒）
                 "max_retries": 2,  # 失败重试次数
-                "temperature": None,  # 温度
-                "max_tokens": None,  # 最大生成长度
+                "temperature": 0.6,  # 温度
+                "max_tokens": 512,  # 最大生成长度
                 "allow_empty_key": False,  # 允许空密钥
             },
             {
@@ -39,9 +39,9 @@ CONFIG = {  # 全局配置字典
                 "model": 'doubao-seed-1-6-251015',  # 模型名称
                 "timeout_sec": 10,  # 超时时间（秒）
                 "max_retries": 2,  # 失败重试次数
-                "temperature": None,  # 温度
-                "max_tokens": None,  # 最大生成长度
-                "max_completion_tokens": None,  # Doubao 输出 token 上限
+                "temperature": 0.6,  # 温度
+                "max_tokens": 512,  # 最大生成长度
+                "max_completion_tokens": 512,  # Doubao 输出 token 上限
                 "reasoning_effort": None,  # low/medium/high
                 "allow_empty_key": False,  # 允许空密钥
             },
@@ -53,8 +53,8 @@ CONFIG = {  # 全局配置字典
                 "model": 'deepseek-chat',  # 模型名称
                 "timeout_sec": 10,  # 超时时间（秒）
                 "max_retries": 2,  # 失败重试次数
-                "temperature": None,  # 温度
-                "max_tokens": None,  # 最大生成长度
+                "temperature": 0.6,  # 温度
+                "max_tokens": 512,  # 最大生成长度
                 "allow_empty_key": False,  # 允许空密钥
             },
             {
@@ -65,8 +65,8 @@ CONFIG = {  # 全局配置字典
                 "model": 'llama3-70b-8192',  # 模型名称
                 "timeout_sec": 10,  # 超时时间（秒）
                 "max_retries": 2,  # 失败重试次数
-                "temperature": None,  # 温度
-                "max_tokens": None,  # 最大生成长度
+                "temperature": 0.6,  # 温度
+                "max_tokens": 512,  # 最大生成长度
                 "allow_empty_key": False,  # 允许空密钥
             },
             {
@@ -77,8 +77,8 @@ CONFIG = {  # 全局配置字典
                 "model": 'deepseek-ai/DeepSeek-V3',  # 模型名称
                 "timeout_sec": 10,  # 超时时间（秒）
                 "max_retries": 2,  # 失败重试次数
-                "temperature": None,  # 温度
-                "max_tokens": None,  # 最大生成长度
+                "temperature": 0.6,  # 温度
+                "max_tokens": 512,  # 最大生成长度
                 "allow_empty_key": False,  # 允许空密钥
             },
             {
@@ -89,8 +89,8 @@ CONFIG = {  # 全局配置字典
                 "model": 'openai/gpt-4o-mini',  # 模型名称
                 "timeout_sec": 10,  # 超时时间（秒）
                 "max_retries": 2,  # 失败重试次数
-                "temperature": None,  # 温度
-                "max_tokens": None,  # 最大生成长度
+                "temperature": 0.6,  # 温度
+                "max_tokens": 512,  # 最大生成长度
                 "allow_empty_key": False,  # 允许空密钥
             },
             {
@@ -101,8 +101,8 @@ CONFIG = {  # 全局配置字典
                 "model": 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo',  # 模型名称
                 "timeout_sec": 10,  # 超时时间（秒）
                 "max_retries": 2,  # 失败重试次数
-                "temperature": None,  # 温度
-                "max_tokens": None,  # 最大生成长度
+                "temperature": 0.6,  # 温度
+                "max_tokens": 512,  # 最大生成长度
                 "allow_empty_key": False,  # 允许空密钥
             },
             {
@@ -113,8 +113,8 @@ CONFIG = {  # 全局配置字典
                 "model": 'accounts/fireworks/models/llama-v3p1-70b-instruct',  # 模型名称
                 "timeout_sec": 10,  # 超时时间（秒）
                 "max_retries": 2,  # 失败重试次数
-                "temperature": None,  # 温度
-                "max_tokens": None,  # 最大生成长度
+                "temperature": 0.6,  # 温度
+                "max_tokens": 512,  # 最大生成长度
                 "allow_empty_key": False,  # 允许空密钥
             },
             {
@@ -125,8 +125,8 @@ CONFIG = {  # 全局配置字典
                 "model": 'mistral-large-latest',  # 模型名称
                 "timeout_sec": 10,  # 超时时间（秒）
                 "max_retries": 2,  # 失败重试次数
-                "temperature": None,  # 温度
-                "max_tokens": None,  # 最大生成长度
+                "temperature": 0.6,  # 温度
+                "max_tokens": 512,  # 最大生成长度
                 "allow_empty_key": False,  # 允许空密钥
             },
             {
@@ -137,8 +137,8 @@ CONFIG = {  # 全局配置字典
                 "model": 'moonshot-v1-8k',  # 模型名称
                 "timeout_sec": 10,  # 超时时间（秒）
                 "max_retries": 2,  # 失败重试次数
-                "temperature": None,  # 温度
-                "max_tokens": None,  # 最大生成长度
+                "temperature": 0.6,  # 温度
+                "max_tokens": 512,  # 最大生成长度
                 "allow_empty_key": False,  # 允许空密钥
             },
             {
@@ -149,8 +149,8 @@ CONFIG = {  # 全局配置字典
                 "model": 'llama-3.1-sonar-large-128k-online',  # 模型名称
                 "timeout_sec": 10,  # 超时时间（秒）
                 "max_retries": 2,  # 失败重试次数
-                "temperature": None,  # 温度
-                "max_tokens": None,  # 最大生成长度
+                "temperature": 0.6,  # 温度
+                "max_tokens": 512,  # 最大生成长度
                 "allow_empty_key": False,  # 允许空密钥
             },
             {
@@ -161,8 +161,8 @@ CONFIG = {  # 全局配置字典
                 "model": 'glm-4.5-air',  # 模型名称
                 "timeout_sec": 10,  # 超时时间（秒）
                 "max_retries": 2,  # 失败重试次数
-                "temperature": None,  # 温度
-                "max_tokens": None,  # 最大生成长度
+                "temperature": 0.6,  # 温度
+                "max_tokens": 512,  # 最大生成长度
                 "allow_empty_key": False,  # 允许空密钥
             },
         ],
@@ -194,31 +194,33 @@ CONFIG = {  # 全局配置字典
         "voice_to_text": True,  # 语音转文字（使用微信内置“语音转文字”）
         "voice_to_text_fail_reply": "",  # 转写失败时回复文本，留空则不回复
         "memory_db_path": "chat_history.db",  # SQLite 记忆库路径
-        "memory_context_limit": 20,  # 每次注入的历史条数（0 表示禁用）
+        "memory_context_limit": 12,  # 每次注入的历史条数（0 表示禁用）
         "memory_seed_on_first_reply": True,  # 首次回复时自动抓取最近聊天记录
-        "memory_seed_limit": 50,  # 首次抓取的历史条数上限（0 表示禁用）
+        "memory_seed_limit": 30,  # 首次抓取的历史条数上限（0 表示禁用）
         "memory_seed_load_more": 0,  # 额外向上加载历史的次数
         "memory_seed_load_more_interval_sec": 0.3,  # 加载历史的滚动间隔（秒）
         "memory_seed_group": False,  # 是否对群聊也执行首次历史抓取
-        "context_rounds": 5,  # 上下文保留轮数
-        "context_max_tokens": None,  # 估算 token 上限（优先于轮数裁剪）
-        "history_max_chats": 200,  # 最多保留的会话数，防止内存膨胀
+        "memory_ttl_sec": None,  # 记忆库保留时间（秒），0/None 表示不过期
+        "memory_cleanup_interval_sec": 0.0,  # 记忆库清理间隔（秒）
+        "context_rounds": 4,  # 上下文保留轮数
+        "context_max_tokens": 1200,  # 估算 token 上限（优先于轮数裁剪）
+        "history_max_chats": 120,  # 最多保留的会话数，防止内存膨胀
         "history_ttl_sec": None,  # 对话记忆过期时间（秒），0/None 表示不过期
         "history_log_interval_sec": 300.0,  # 历史统计日志间隔（秒）
-        "poll_interval_sec": 0.05,  # 轮询微信消息间隔（秒）
-        "poll_interval_min_sec": 0.05,  # 轮询最短间隔（秒）
-        "poll_interval_max_sec": 1.0,  # 轮询最长间隔（秒）
+        "poll_interval_sec": 0.1,  # 轮询微信消息间隔（秒）
+        "poll_interval_min_sec": 0.1,  # 轮询最短间隔（秒）
+        "poll_interval_max_sec": 1.2,  # 轮询最长间隔（秒）
         "poll_interval_backoff_factor": 1.2,  # 空闲时轮询退避倍数
-        "min_reply_interval_sec": 0.05,  # 最小回复间隔（秒）
-        "merge_user_messages_sec": 0.2,  # 合并连续消息的等待窗口（秒），0 表示不合并
-        "merge_user_messages_max_wait_sec": 0.6,  # 合并连续消息的最长等待（秒），0 表示不限制
+        "min_reply_interval_sec": 0.3,  # 最小回复间隔（秒）
+        "merge_user_messages_sec": 0.5,  # 合并连续消息的等待窗口（秒），0 表示不合并
+        "merge_user_messages_max_wait_sec": 1.2,  # 合并连续消息的最长等待（秒），0 表示不限制
         "reply_chunk_size": 500,  # 单条消息最大长度（字符）
         "reply_chunk_delay_sec": 0.2,  # 分段发送间隔（秒）
-        "stream_reply": True,  # 是否启用流式回复
+        "stream_reply": False,  # 是否启用流式回复
         "stream_buffer_chars": 40,  # 流式缓冲阈值（字符）
         "stream_chunk_max_chars": 500,  # 流式单段最大长度（字符）
-        "random_delay_range_sec": [0.05, 0.2],  # 随机延迟区间（秒）
-        "max_concurrency": 5,  # 最大并发处理数
+        "random_delay_range_sec": [0.2, 0.8],  # 随机延迟区间（秒）
+        "max_concurrency": 3,  # 最大并发处理数
         "config_reload_sec": 2.0,  # 配置热重载检查间隔（秒）
         "keepalive_idle_sec": 180.0,  # 无消息后触发重连的空闲阈值
         "reconnect_max_retries": 3,  # 重连最大重试次数
@@ -229,8 +231,8 @@ CONFIG = {  # 全局配置字典
         "group_reply_only_when_at": False,  # 群聊仅在被 @ 时回复
         "group_include_sender": True,  # 群聊回复中包含发送者
         "filter_mute": True,  # 过滤免打扰/静音会话
-        "send_exact_match": False,  # 仅在完全匹配时发送
-        "send_fallback_current_chat": True,  # 回退时发送到当前会话
+        "send_exact_match": True,  # 仅在完全匹配时发送
+        "send_fallback_current_chat": False,  # 回退时发送到当前会话
         "ignore_official": True,  # 忽略公众号
         "ignore_service": True,  # 忽略服务号
         "ignore_names": ['文件传输助手', '微信团队'],  # 忽略的联系人/群名
@@ -243,8 +245,8 @@ CONFIG = {  # 全局配置字典
         "file": "wxauto_logs/bot.log",  # 日志文件路径，留空则仅控制台输出
         "max_bytes": 5 * 1024 * 1024,  # 单个日志文件最大尺寸
         "backup_count": 5,  # 轮转保留数量
-        "log_message_content": True,  # 是否记录消息内容
-        "log_reply_content": True,  # 是否记录回复内容
+        "log_message_content": False,  # 是否记录消息内容
+        "log_reply_content": False,  # 是否记录回复内容
     },
 }
 

@@ -11,9 +11,14 @@ ALLOWED_ROLES = {"user", "assistant", "system"}
 
 
 class MemoryManager:
-    """Lightweight SQLite-backed chat history storage."""
+    """Lightweight SQLite-backed chat history storage with optional TTL cleanup."""
 
-    def __init__(self, db_path: str = "chat_history.db") -> None:
+    def __init__(
+        self,
+        db_path: str = "chat_history.db",
+        ttl_sec: Optional[float] = None,
+        cleanup_interval_sec: float = 300.0,
+    ) -> None:
         self.db_path = os.path.abspath(db_path)
         db_dir = os.path.dirname(self.db_path)
         if db_dir:
@@ -21,7 +26,11 @@ class MemoryManager:
         self._lock = threading.Lock()
         self._conn = sqlite3.connect(self.db_path)
         self._conn.row_factory = sqlite3.Row
+        self._ttl_sec = self._normalize_ttl(ttl_sec)
+        self._cleanup_interval_sec = self._normalize_interval(cleanup_interval_sec)
+        self._last_cleanup_ts = 0.0
         self._init_db()
+        self._maybe_cleanup(force=True)
 
     def _init_db(self) -> None:
         with self._lock:
@@ -40,10 +49,61 @@ class MemoryManager:
             )
             self._conn.commit()
 
+    @staticmethod
+    def _normalize_ttl(value: Optional[float]) -> Optional[float]:
+        if value is None:
+            return None
+        try:
+            val = float(value)
+        except (TypeError, ValueError):
+            return None
+        if val <= 0:
+            return None
+        return val
+
+    @staticmethod
+    def _normalize_interval(value: Optional[float]) -> float:
+        try:
+            val = float(value)
+        except (TypeError, ValueError):
+            return 0.0
+        return max(0.0, val)
+
+    def update_retention(
+        self,
+        ttl_sec: Optional[float],
+        cleanup_interval_sec: Optional[float] = None,
+    ) -> None:
+        self._ttl_sec = self._normalize_ttl(ttl_sec)
+        if cleanup_interval_sec is not None:
+            self._cleanup_interval_sec = self._normalize_interval(
+                cleanup_interval_sec
+            )
+        self._maybe_cleanup(force=True)
+
+    def _maybe_cleanup(self, force: bool = False) -> None:
+        if not self._ttl_sec:
+            return
+        now = time.time()
+        if not force and self._cleanup_interval_sec > 0:
+            if now - self._last_cleanup_ts < self._cleanup_interval_sec:
+                return
+        cutoff = int(now - self._ttl_sec)
+        if cutoff <= 0:
+            return
+        with self._lock:
+            self._conn.execute(
+                "DELETE FROM chat_history WHERE created_at < ?",
+                (cutoff,),
+            )
+            self._conn.commit()
+        self._last_cleanup_ts = now
+
     def has_messages(self, wx_id: str) -> bool:
         wx_id = str(wx_id).strip()
         if not wx_id:
             return False
+        self._maybe_cleanup()
         with self._lock:
             row = self._conn.execute(
                 "SELECT 1 FROM chat_history WHERE wx_id = ? LIMIT 1",
@@ -61,6 +121,7 @@ class MemoryManager:
         content = str(content or "").strip()
         if not content:
             return
+        self._maybe_cleanup()
         created_at = int(time.time())
         with self._lock:
             self._conn.execute(
@@ -74,6 +135,7 @@ class MemoryManager:
         wx_id = str(wx_id).strip()
         if not wx_id:
             return 0
+        self._maybe_cleanup()
         created_at = int(time.time())
         rows = []
         for msg in messages:
@@ -101,6 +163,7 @@ class MemoryManager:
         wx_id = str(wx_id).strip()
         if not wx_id:
             return []
+        self._maybe_cleanup()
         try:
             limit_val = int(limit)
         except (TypeError, ValueError):

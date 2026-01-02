@@ -1124,12 +1124,26 @@ async def main() -> None:
         min_value=0.0,
     )
     memory_seed_group = bool(bot_cfg.get("memory_seed_group", False))
+    memory_ttl_raw = bot_cfg.get("memory_ttl_sec")
+    if memory_ttl_raw is None:
+        memory_ttl_sec = None
+    else:
+        memory_ttl_sec = as_float(memory_ttl_raw, 0.0, min_value=0.0) or None
+    memory_cleanup_interval_sec = as_float(
+        bot_cfg.get("memory_cleanup_interval_sec", 300.0),
+        300.0,
+        min_value=0.0,
+    )
     memory_db_path = bot_cfg.get("memory_db_path") or os.path.join(
         base_dir, "chat_history.db"
     )
     memory: Optional[MemoryManager] = None
     try:
-        memory = MemoryManager(str(memory_db_path))
+        memory = MemoryManager(
+            str(memory_db_path),
+            ttl_sec=memory_ttl_sec,
+            cleanup_interval_sec=memory_cleanup_interval_sec,
+        )
     except Exception as exc:
         logging.warning("memory init failed: %s", exc)
     reconnect_policy = get_reconnect_policy(bot_cfg)
@@ -1924,6 +1938,33 @@ async def main() -> None:
                                 "memory_seed_group", memory_seed_group
                             )
                         )
+                        memory_ttl_raw = bot_cfg.get(
+                            "memory_ttl_sec", memory_ttl_sec
+                        )
+                        if memory_ttl_raw is None:
+                            memory_ttl_sec = None
+                        else:
+                            memory_ttl_sec = (
+                                as_float(
+                                    memory_ttl_raw,
+                                    0.0,
+                                    min_value=0.0,
+                                )
+                                or None
+                            )
+                        memory_cleanup_interval_sec = as_float(
+                            bot_cfg.get(
+                                "memory_cleanup_interval_sec",
+                                memory_cleanup_interval_sec,
+                            ),
+                            memory_cleanup_interval_sec,
+                            min_value=0.0,
+                        )
+                        if memory:
+                            memory.update_retention(
+                                memory_ttl_sec,
+                                memory_cleanup_interval_sec,
+                            )
                         max_concurrency = as_int(
                             bot_cfg.get("max_concurrency", max_concurrency),
                             max_concurrency,
