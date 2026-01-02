@@ -1,0 +1,24 @@
+2026-01-01 16:57:02 [root] [INFO] [main.py:263]  微信重连成功。
+2026-01-01 16:57:52 [httpx] [INFO] [_client.py:1740]  HTTP Request: POST https://ark.cn-beijing.volces.com/api/v3/chat/completions "HTTP/1.1 200 OK"
+2026-01-01 16:57:56 [root] [INFO] [main.py:1169]  回复完成 | 时间=2026-01-01 16:57:56 | 发送者=阿惠 | 消息=1 | 会话=阿惠 | 回复=咋啦？发个1是想召唤我这个AI小助手吗[笑哭]
+2026-01-01 17:19:59 [root] [INFO] [main.py:263]  微信重连成功。
+2026-01-01 17:25:00 [root] [INFO] [main.py:1504]  历史统计 | 会话=0 | 消息=0 | tokens=0
+2026-01-01 17:30:01 [root] [INFO] [main.py:1504]  历史统计 | 会话=0 | 消息=0 | tokens=0
+2026-01-01 17:36:19 [root] [INFO] [main.py:263]  微信重连成功。
+2026-01-01 17:46:49 [root] [INFO] [main.py:263]  微信重连成功。
+2026-01-01 17:47:59 [httpx] [INFO] [_client.py:1740]  HTTP Request: POST https://ark.cn-beijing.volces.com/api/v3/chat/completions "HTTP/1.1 200 OK"
+2026-01-01 17:48:04 [root] [INFO] [main.py:1332]  回复完成 | 时间=2026-01-01 17:48:04 | 发送者=米泽宇 | 消息=搞啥呢 | 会话=米泽宇 | 回复=他这会儿正忙着处理点事呢~我是他的AI小助手，你找他有啥事儿不？--doubao-seed-1-6-251015 | tokens=39(用户=7,回复=32) | 历史tokens=39
+2026-01-01 17:48:16 [httpx] [INFO] [_client.py:1740]  HTTP Request: POST https://ark.cn-beijing.volces.com/api/v3/chat/completions "HTTP/1.1 200 OK"
+2026-01-01 17:48:19 [httpx] [INFO] [_client.py:1740]  HTTP Request: POST https://ark.cn-beijing.volces.com/api/v3/chat/completions "HTTP/1.1 200 OK"
+2026-01-01 17:48:22 [root] [INFO] [main.py:1332]  回复完成 | 时间=2026-01-01 17:48:22 | 发送者=米泽宇 | 消息=token直接用冒烟了 | 会话=米泽宇 | 回复=哈哈，这token烧得够猛啊，看来最近没少跟AI唠嗑~你是在折腾啥模型呢？--doubao-seed-1-6-251015 | tokens=43(用户=11,回复=32) | 历史tokens=82
+2026-01-01 17:48:24 [root] [INFO] [main.py:1332]  回复完成 | 时间=2026-01-01 17:48:24 | 发送者=米泽宇 | 消息=牛逼 | 会话=米泽宇 | 回复=哈哈，过奖啦～你找他是有啥急事还是想闲聊会儿呀？--doubao-seed-1-6-251015 | tokens=32(用户=6,回复=26) | 历史tokens=114
+2026-01-01 17:50:36 [httpx] [INFO] [_client.py:1740]  HTTP Request: POST https://ark.cn-beijing.volces.com/api/v3/chat/completions "HTTP/1.1 200 OK"
+2026-01-01 17:50:40 [root] [INFO] [main.py:1332]  回复完成 | 时间=2026-01-01 17:50:40 | 发送者=米泽宇 | 消息=[动画表情] | 会话=米泽宇 | 回复=这个表情还挺生动的～你是想继续跟我唠会儿，还是等他忙完了再找他呀？--doubao-seed-1-6-251015 | tokens=44(用户=9,回复=35) | 历史tokens=158
+2026-01-01 17:51:49 [root] [INFO] [main.py:1546]  历史统计 | 会话=1 | 消息=8 | tokens=158
+2026-01-01 17:56:50 [root] [INFO] [main.py:1546]  历史统计 | 会话=1 | 消息=8 | tokens=158
+2026-01-01 18:01:51 [root] [INFO] [main.py:1546]  历史统计 | 会话=1 | 消息=8 | tokens=158
+2026-01-01 18:06:51 [root] [INFO] [main.py:1546]  历史统计 | 会话=1 | 消息=8 | tokens=158
+2026-01-01 18:11:52 [root] [INFO] [main.py:1546]  历史统计 | 会话=1 | 消息=8 | tokens=158
+2026-01-01 18:16:52 [root] [INFO] [main.py:1546]  历史统计 | 会话=1 | 消息=8 | tokens=158
+2026-01-01 18:21:54 [root] [INFO] [main.py:1546]  历史统计 | 会话=1 | 消息=8 | tokens=158
+2026-01-01 18:47:06 [root] [INFO] [main.py:263]  微信重连成功。

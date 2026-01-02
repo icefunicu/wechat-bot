@@ -1,0 +1,7 @@
+2026-01-02 17:52:41 [root] [INFO] [main.py:263]  微信重连成功。
+2026-01-02 17:55:38 [httpx] [INFO] [_client.py:1740]  HTTP Request: POST https://ark.cn-beijing.volces.com/api/v3/chat/completions "HTTP/1.1 200 OK"
+2026-01-02 17:55:43 [root] [INFO] [main.py:1356]  回复完成 | 时间=2026-01-02 17:55:43 | 发送者=吴希媛 | 消息=小花你在吗 | 会话=吴希媛 | 回复=哈哈，我不是小花哦～我是杜旭嘉的AI小助手，请问找他有什么事吗？  🤖💬 AI代言中～ | tokens=40(用户=9,回复=31) | 历史tokens=40
+2026-01-02 17:57:41 [root] [INFO] [main.py:1641]  历史统计 | 会话=1 | 消息=2 | tokens=40
+2026-01-02 18:04:59 [root] [INFO] [main.py:263]  微信重连成功。
+2026-01-02 18:05:07 [httpx] [INFO] [_client.py:1740]  HTTP Request: POST https://ark.cn-beijing.volces.com/api/v3/chat/completions "HTTP/1.1 200 OK"
+2026-01-02 18:05:13 [root] [INFO] [main.py:1356]  回复完成 | 时间=2026-01-02 18:05:13 | 发送者=吴希媛 | 消息=哈哈哈哈哈 | 会话=吴希媛 | 回复=哈哈哈哈你这笑声也太有感染力了吧～啥事儿这么开心呀，快说来听听让我也沾沾喜气[大笑]  🤖💬 AI代言中～ | tokens=50(用户=9,回复=41) | 历史tokens=50

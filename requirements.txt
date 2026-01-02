@@ -1,0 +1,2 @@
+httpx
+wxauto @ git+https://github.com/cluic/wxauto.git

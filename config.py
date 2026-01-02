@@ -1,0 +1,240 @@
+"""
+配置文件，请按需修改。
+
+"""
+
+
+CONFIG = {  # 全局配置字典
+    "api": {  # 模型接口相关配置
+        "base_url": 'https://api.openai.com/v1',  # 默认接口地址
+        "api_key": "YOUR_API_KEY",  # 默认接口密钥
+        "model": 'gpt-4o-mini',  # 默认模型名称
+        "alias": '小欧', # 模型别名
+        "timeout_sec": 10,  # 超时时间（秒）
+        "max_retries": 2,  # 失败重试次数
+        "temperature": 0.7,  # 温度
+        "max_tokens": 1024,  # 最大生成长度
+        "max_completion_tokens": None,  # Doubao 等模型使用的输出 token 上限
+        "reasoning_effort": None,  # low/medium/high
+        "allow_empty_key": False,  # 允许空密钥
+        "active_preset": 'Doubao',  # 优先使用的预设名称
+        "presets": [  # 多服务预设列表
+            {
+                "name": 'OpenAI',  # 预设名称
+                "alias": '小欧', # 模型别名
+                "base_url": 'https://api.openai.com/v1',  # 接口地址
+                "api_key": "YOUR_OPENAI_KEY",  # 接口密钥
+                "model": 'gpt-4o-mini',  # 模型名称
+                "timeout_sec": 10,  # 超时时间（秒）
+                "max_retries": 2,  # 失败重试次数
+                "temperature": None,  # 温度
+                "max_tokens": None,  # 最大生成长度
+                "allow_empty_key": False,  # 允许空密钥
+            },
+            {
+                "name": 'Doubao',  # 预设名称
+                "alias": '小豆', # 模型别名
+                "base_url": 'https://ark.cn-beijing.volces.com/api/v3',  # 接口地址
+                "api_key": "",  # 接口密钥
+                "model": 'doubao-seed-1-6-251015',  # 模型名称
+                "timeout_sec": 10,  # 超时时间（秒）
+                "max_retries": 2,  # 失败重试次数
+                "temperature": None,  # 温度
+                "max_tokens": None,  # 最大生成长度
+                "max_completion_tokens": None,  # Doubao 输出 token 上限
+                "reasoning_effort": None,  # low/medium/high
+                "allow_empty_key": False,  # 允许空密钥
+            },
+            {
+                "name": 'DeepSeek',  # 预设名称
+                "alias": '小深', # 模型别名
+                "base_url": 'https://api.deepseek.com/v1',  # 接口地址
+                "api_key": "YOUR_DEEPSEEK_KEY",  # 接口密钥
+                "model": 'deepseek-chat',  # 模型名称
+                "timeout_sec": 10,  # 超时时间（秒）
+                "max_retries": 2,  # 失败重试次数
+                "temperature": None,  # 温度
+                "max_tokens": None,  # 最大生成长度
+                "allow_empty_key": False,  # 允许空密钥
+            },
+            {
+                "name": 'Groq',  # 预设名称
+                "alias": '小咕', # 模型别名
+                "base_url": 'https://api.groq.com/openai/v1',  # 接口地址
+                "api_key": "YOUR_GROQ_KEY",  # 接口密钥
+                "model": 'llama3-70b-8192',  # 模型名称
+                "timeout_sec": 10,  # 超时时间（秒）
+                "max_retries": 2,  # 失败重试次数
+                "temperature": None,  # 温度
+                "max_tokens": None,  # 最大生成长度
+                "allow_empty_key": False,  # 允许空密钥
+            },
+            {
+                "name": 'SiliconFlow',  # 预设名称
+                "alias": '小硅', # 模型别名
+                "base_url": 'https://api.siliconflow.cn/v1',  # 接口地址
+                "api_key": "YOUR_SILICONFLOW_KEY",  # 接口密钥
+                "model": 'deepseek-ai/DeepSeek-V3',  # 模型名称
+                "timeout_sec": 10,  # 超时时间（秒）
+                "max_retries": 2,  # 失败重试次数
+                "temperature": None,  # 温度
+                "max_tokens": None,  # 最大生成长度
+                "allow_empty_key": False,  # 允许空密钥
+            },
+            {
+                "name": 'OpenRouter',  # 预设名称
+                "alias": '小路', # 模型别名
+                "base_url": 'https://openrouter.ai/api/v1',  # 接口地址
+                "api_key": "YOUR_OPENROUTER_KEY",  # 接口密钥
+                "model": 'openai/gpt-4o-mini',  # 模型名称
+                "timeout_sec": 10,  # 超时时间（秒）
+                "max_retries": 2,  # 失败重试次数
+                "temperature": None,  # 温度
+                "max_tokens": None,  # 最大生成长度
+                "allow_empty_key": False,  # 允许空密钥
+            },
+            {
+                "name": 'Together',  # 预设名称
+                "alias": '小合', # 模型别名
+                "base_url": 'https://api.together.xyz/v1',  # 接口地址
+                "api_key": "YOUR_TOGETHER_KEY",  # 接口密钥
+                "model": 'meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo',  # 模型名称
+                "timeout_sec": 10,  # 超时时间（秒）
+                "max_retries": 2,  # 失败重试次数
+                "temperature": None,  # 温度
+                "max_tokens": None,  # 最大生成长度
+                "allow_empty_key": False,  # 允许空密钥
+            },
+            {
+                "name": 'Fireworks',  # 预设名称
+                "alias": '小焰', # 模型别名
+                "base_url": 'https://api.fireworks.ai/inference/v1',  # 接口地址
+                "api_key": "YOUR_FIREWORKS_KEY",  # 接口密钥
+                "model": 'accounts/fireworks/models/llama-v3p1-70b-instruct',  # 模型名称
+                "timeout_sec": 10,  # 超时时间（秒）
+                "max_retries": 2,  # 失败重试次数
+                "temperature": None,  # 温度
+                "max_tokens": None,  # 最大生成长度
+                "allow_empty_key": False,  # 允许空密钥
+            },
+            {
+                "name": 'Mistral',  # 预设名称
+                "alias": '小风', # 模型别名
+                "base_url": 'https://api.mistral.ai/v1',  # 接口地址
+                "api_key": "YOUR_MISTRAL_KEY",  # 接口密钥
+                "model": 'mistral-large-latest',  # 模型名称
+                "timeout_sec": 10,  # 超时时间（秒）
+                "max_retries": 2,  # 失败重试次数
+                "temperature": None,  # 温度
+                "max_tokens": None,  # 最大生成长度
+                "allow_empty_key": False,  # 允许空密钥
+            },
+            {
+                "name": 'Moonshot',  # 预设名称
+                "alias": '小月', # 模型别名
+                "base_url": 'https://api.moonshot.cn/v1',  # 接口地址
+                "api_key": "YOUR_MOONSHOT_KEY",  # 接口密钥
+                "model": 'moonshot-v1-8k',  # 模型名称
+                "timeout_sec": 10,  # 超时时间（秒）
+                "max_retries": 2,  # 失败重试次数
+                "temperature": None,  # 温度
+                "max_tokens": None,  # 最大生成长度
+                "allow_empty_key": False,  # 允许空密钥
+            },
+            {
+                "name": 'Perplexity',  # 预设名称
+                "alias": '小悟', # 模型别名
+                "base_url": 'https://api.perplexity.ai',  # 接口地址
+                "api_key": "YOUR_PERPLEXITY_KEY",  # 接口密钥
+                "model": 'llama-3.1-sonar-large-128k-online',  # 模型名称
+                "timeout_sec": 10,  # 超时时间（秒）
+                "max_retries": 2,  # 失败重试次数
+                "temperature": None,  # 温度
+                "max_tokens": None,  # 最大生成长度
+                "allow_empty_key": False,  # 允许空密钥
+            },
+            {
+                "name": 'Zhipu',  # 预设名称
+                "alias": '小G', # 模型别名
+                "base_url": 'https://open.bigmodel.cn/api/paas/v4',  # 接口地址
+                "api_key": "",  # 接口密钥
+                "model": 'glm-4.5-air',  # 模型名称
+                "timeout_sec": 10,  # 超时时间（秒）
+                "max_retries": 2,  # 失败重试次数
+                "temperature": None,  # 温度
+                "max_tokens": None,  # 最大生成长度
+                "allow_empty_key": False,  # 允许空密钥
+            },
+        ],
+    },        
+    "bot": {  # 机器人行为与回复配置
+        "self_name": '知有',  # 机器人自称/昵称
+        # 使用 Python 的多行字符串写法，更易读易改
+        "system_prompt": (  # 系统提示词（人设与规则）
+            "你是由主人训练的AI分身，名字叫'AI小助手'。你的设定是一个高情商、幽默且风趣的私人助理。"
+            "你现在的任务是代表主人在微信上回复消息。\n\n"
+            "【核心人设】\n"
+            "1. 说话风格：像真人发微信一样，口语化、接地气。可以适度使用“哈哈”、“嗯嗯”等语气词，但不要滥用。尽量不使用网络梗，可以使用emoji但尽量少用。\n"
+            "2. 回复长度：微信聊天通常很短。请尽量将回复控制在1-2句话以内，严禁长篇大论或像写邮件一样说话。\n"
+            "3. 知识边界：你知道主人是你的创造者/主人。除此之外不知道的信息就诚实说不知道，不要一本正经地胡说八道。\n\n"
+            "【应对规则】\n"
+            "1. 关于主人：如果对方找主人（问他在哪、在干嘛），回复要自然。例如：“他在忙，我先陪你聊五毛钱的”、“他在忙，我是他的AI分身，有急事可以留言哦”。\n"
+            "2. 拒绝说教：绝对不要输出“作为AI助手我建议你...”这种爹味十足的话。要像朋友一样交流。\n"
+            "3. 话题延续：对方抛出话题时，要接得住梗，并适当反问，不要把天聊死。\n"
+            "4. 安全合规：遇到敏感、政治或不适宜的话题，用幽默的方式打哈哈绕过去，或者装傻。\n"
+        ),
+        "system_prompt_overrides": {  # 按会话名覆盖 system prompt
+            # "某个好友/群名": "这里写覆盖后的系统提示词",
+        },
+        "reply_suffix": "\n （🤖💬 AI代言中～）",  # 回复末尾追加（支持 {alias} / {model}）
+        "emoji_policy": 'mixed',  # emoji 处理：wechat/strip/keep/mixed
+        "emoji_replacements": {},  # 自定义 emoji -> 微信表情文本
+        "voice_to_text": True,  # 语音转文字（使用微信内置“语音转文字”）
+        "voice_to_text_fail_reply": "",  # 转写失败时回复文本，留空则不回复
+        "context_rounds": 5,  # 上下文保留轮数
+        "context_max_tokens": None,  # 估算 token 上限（优先于轮数裁剪）
+        "history_max_chats": 200,  # 最多保留的会话数，防止内存膨胀
+        "history_ttl_sec": 24 * 60 * 60,  # 对话记忆过期时间（秒），0/None 表示不过期
+        "history_log_interval_sec": 300.0,  # 历史统计日志间隔（秒）
+        "poll_interval_sec": 0.05,  # 轮询微信消息间隔（秒）
+        "poll_interval_min_sec": 0.05,  # 轮询最短间隔（秒）
+        "poll_interval_max_sec": 1.0,  # 轮询最长间隔（秒）
+        "poll_interval_backoff_factor": 1.2,  # 空闲时轮询退避倍数
+        "min_reply_interval_sec": 0.05,  # 最小回复间隔（秒）
+        "merge_user_messages_sec": 0.2,  # 合并连续消息的等待窗口（秒），0 表示不合并
+        "merge_user_messages_max_wait_sec": 0.6,  # 合并连续消息的最长等待（秒），0 表示不限制
+        "reply_chunk_size": 500,  # 单条消息最大长度（字符）
+        "reply_chunk_delay_sec": 0.2,  # 分段发送间隔（秒）
+        "stream_reply": True,  # 是否启用流式回复
+        "stream_buffer_chars": 40,  # 流式缓冲阈值（字符）
+        "stream_chunk_max_chars": 500,  # 流式单段最大长度（字符）
+        "random_delay_range_sec": [0.05, 0.2],  # 随机延迟区间（秒）
+        "max_concurrency": 5,  # 最大并发处理数
+        "config_reload_sec": 2.0,  # 配置热重载检查间隔（秒）
+        "keepalive_idle_sec": 180.0,  # 无消息后触发重连的空闲阈值
+        "reconnect_max_retries": 3,  # 重连最大重试次数
+        "reconnect_backoff_sec": 2.0,  # 重连退避基准秒数
+        "reconnect_max_delay_sec": 20.0,  # 重连最大等待秒数
+        "reload_ai_client_on_change": True,  # 配置变更时重载 AI 客户端
+        "reload_ai_client_module": False,  # 是否重载 AI 客户端模块
+        "group_reply_only_when_at": False,  # 群聊仅在被 @ 时回复
+        "group_include_sender": True,  # 群聊回复中包含发送者
+        "filter_mute": True,  # 过滤免打扰/静音会话
+        "send_exact_match": False,  # 仅在完全匹配时发送
+        "send_fallback_current_chat": True,  # 回退时发送到当前会话
+        "ignore_official": True,  # 忽略公众号
+        "ignore_service": True,  # 忽略服务号
+        "ignore_names": ['文件传输助手', '微信团队'],  # 忽略的联系人/群名
+        "ignore_keywords": ['订阅号'],  # 忽略的关键词
+        "whitelist_enabled": True,  # 是否启用白名单
+        "whitelist": ['点菜炫饭群(', '🐶 🐶 🐶 🐶 🐶 🐶'],  # 白名单列表
+        },
+    "logging": {  # 日志相关配置
+        "level": 'INFO',  # 日志级别
+        "file": "wxauto_logs/bot.log",  # 日志文件路径，留空则仅控制台输出
+        "max_bytes": 5 * 1024 * 1024,  # 单个日志文件最大尺寸
+        "backup_count": 5,  # 轮转保留数量
+        "log_message_content": True,  # 是否记录消息内容
+        "log_reply_content": True,  # 是否记录回复内容
+    },
+}
