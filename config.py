@@ -194,10 +194,15 @@ CONFIG = {  # 全局配置字典
         "voice_to_text_fail_reply": "",  # 转写失败时回复文本，留空则不回复
         "memory_db_path": "chat_history.db",  # SQLite 记忆库路径
         "memory_context_limit": 20,  # 每次注入的历史条数（0 表示禁用）
+        "memory_seed_on_first_reply": True,  # 首次回复时自动抓取最近聊天记录
+        "memory_seed_limit": 50,  # 首次抓取的历史条数上限（0 表示禁用）
+        "memory_seed_load_more": 0,  # 额外向上加载历史的次数
+        "memory_seed_load_more_interval_sec": 0.3,  # 加载历史的滚动间隔（秒）
+        "memory_seed_group": False,  # 是否对群聊也执行首次历史抓取
         "context_rounds": 5,  # 上下文保留轮数
         "context_max_tokens": None,  # 估算 token 上限（优先于轮数裁剪）
         "history_max_chats": 200,  # 最多保留的会话数，防止内存膨胀
-        "history_ttl_sec": 24 * 60 * 60,  # 对话记忆过期时间（秒），0/None 表示不过期
+        "history_ttl_sec": None,  # 对话记忆过期时间（秒），0/None 表示不过期
         "history_log_interval_sec": 300.0,  # 历史统计日志间隔（秒）
         "poll_interval_sec": 0.05,  # 轮询微信消息间隔（秒）
         "poll_interval_min_sec": 0.05,  # 轮询最短间隔（秒）

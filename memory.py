@@ -4,7 +4,7 @@ import os
 import sqlite3
 import threading
 import time
-from typing import List, Optional
+from typing import Iterable, List, Optional
 
 
 ALLOWED_ROLES = {"user", "assistant", "system"}
@@ -40,6 +40,17 @@ class MemoryManager:
             )
             self._conn.commit()
 
+    def has_messages(self, wx_id: str) -> bool:
+        wx_id = str(wx_id).strip()
+        if not wx_id:
+            return False
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT 1 FROM chat_history WHERE wx_id = ? LIMIT 1",
+                (wx_id,),
+            ).fetchone()
+        return row is not None
+
     def add_message(self, wx_id: str, role: str, content: str) -> None:
         wx_id = str(wx_id).strip()
         if not wx_id:
@@ -58,6 +69,33 @@ class MemoryManager:
                 (wx_id, role, content, created_at),
             )
             self._conn.commit()
+
+    def add_messages(self, wx_id: str, messages: Iterable[dict]) -> int:
+        wx_id = str(wx_id).strip()
+        if not wx_id:
+            return 0
+        created_at = int(time.time())
+        rows = []
+        for msg in messages:
+            if not isinstance(msg, dict):
+                continue
+            role = str(msg.get("role", "")).strip().lower()
+            if role not in ALLOWED_ROLES:
+                continue
+            content = str(msg.get("content", "") or "").strip()
+            if not content:
+                continue
+            rows.append((wx_id, role, content, created_at))
+        if not rows:
+            return 0
+        with self._lock:
+            self._conn.executemany(
+                "INSERT INTO chat_history (wx_id, role, content, created_at) "
+                "VALUES (?, ?, ?, ?)",
+                rows,
+            )
+            self._conn.commit()
+        return len(rows)
 
     def get_recent_context(self, wx_id: str, limit: int = 20) -> List[dict]:
         wx_id = str(wx_id).strip()

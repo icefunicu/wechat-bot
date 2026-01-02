@@ -95,6 +95,11 @@ API_KEYS = {
 - `history_ttl_sec`：内存历史过期时间
 - `memory_db_path`：SQLite 记忆库路径
 - `memory_context_limit`：每次注入的历史条数（0 表示禁用）
+- `memory_seed_on_first_reply`：首次回复时自动抓取最近聊天记录
+- `memory_seed_limit`：首次抓取的历史条数上限（0 表示禁用）
+- `memory_seed_load_more`：额外向上加载历史的次数
+- `memory_seed_load_more_interval_sec`：加载历史的滚动间隔（秒）
+- `memory_seed_group`：是否对群聊也执行首次历史抓取
 - `history_log_interval_sec`：周期性输出历史统计日志
 
 回复与发送：

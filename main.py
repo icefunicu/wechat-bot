@@ -442,6 +442,84 @@ def format_user_text(event: MessageEvent, bot_cfg: Dict[str, Any]) -> str:
     return event.content
 
 
+def build_seed_messages(
+    raw_messages: Iterable[Any],
+    is_group: bool,
+    self_name: str,
+    group_include_sender: bool,
+) -> List[dict]:
+    messages: List[dict] = []
+    for msg in raw_messages:
+        if not (hasattr(msg, "content") and hasattr(msg, "type")):
+            continue
+        attr = getattr(msg, "attr", None)
+        if attr not in ("friend", "self"):
+            continue
+        content = getattr(msg, "content", "") or ""
+        msg_type = getattr(msg, "type", None)
+        if not is_text_message(msg_type, content):
+            continue
+        content = str(content).strip()
+        if not content:
+            continue
+        if is_group:
+            content = strip_at_text(content, self_name)
+            if group_include_sender and attr == "friend":
+                sender = (
+                    getattr(msg, "sender", None)
+                    or getattr(msg, "sender_remark", None)
+                    or ""
+                )
+                sender = str(sender).strip()
+                if sender:
+                    content = f"{sender}: {content}"
+        role = "assistant" if attr == "self" else "user"
+        messages.append({"role": role, "content": content})
+    return messages
+
+
+def trim_seed_messages(
+    messages: List[dict],
+    limit: int,
+    current_user_text: Optional[str],
+) -> List[dict]:
+    if not messages:
+        return []
+    trimmed = messages
+    current_text = str(current_user_text or "").strip()
+    if (
+        current_text
+        and trimmed
+        and trimmed[-1].get("role") == "user"
+        and trimmed[-1].get("content") == current_text
+    ):
+        trimmed = trimmed[:-1]
+    if limit > 0 and len(trimmed) > limit:
+        trimmed = trimmed[-limit:]
+    return trimmed
+
+
+def fetch_recent_chat_messages(
+    wx: "WeChat",
+    chat_name: str,
+    bot_cfg: Dict[str, Any],
+    load_more_count: int,
+    load_more_interval_sec: float,
+) -> List[Any]:
+    if not chat_name:
+        return []
+    result = wx.ChatWith(
+        chat_name,
+        exact=bool(bot_cfg.get("send_exact_match", False)),
+    )
+    if not result:
+        return []
+    for _ in range(load_more_count):
+        if not wx.LoadMoreMessage(interval=load_more_interval_sec):
+            break
+    return wx.GetAllMessage() or []
+
+
 def build_history_context_text(messages: List[dict]) -> str:
     if not messages:
         return ""
@@ -1031,6 +1109,21 @@ async def main() -> None:
     memory_context_limit = as_int(
         bot_cfg.get("memory_context_limit", 20), 20, min_value=0
     )
+    memory_seed_on_first_reply = bool(
+        bot_cfg.get("memory_seed_on_first_reply", True)
+    )
+    memory_seed_limit = as_int(
+        bot_cfg.get("memory_seed_limit", 50), 50, min_value=0
+    )
+    memory_seed_load_more = as_int(
+        bot_cfg.get("memory_seed_load_more", 0), 0, min_value=0
+    )
+    memory_seed_load_more_interval_sec = as_float(
+        bot_cfg.get("memory_seed_load_more_interval_sec", 0.3),
+        0.3,
+        min_value=0.0,
+    )
+    memory_seed_group = bool(bot_cfg.get("memory_seed_group", False))
     memory_db_path = bot_cfg.get("memory_db_path") or os.path.join(
         base_dir, "chat_history.db"
     )
@@ -1225,6 +1318,52 @@ async def main() -> None:
                     else f"friend:{event.chat_name}"
                 )
                 recent_context: List[dict] = []
+                if (
+                    memory
+                    and user_text.strip()
+                    and memory_seed_on_first_reply
+                    and memory_seed_limit > 0
+                    and (not event.is_group or memory_seed_group)
+                ):
+                    has_history = False
+                    try:
+                        has_history = memory.has_messages(chat_id)
+                    except Exception as exc:
+                        logging.warning("memory check failed: %s", exc)
+                        has_history = True
+                    if not has_history:
+                        try:
+                            async with wx_lock:
+                                raw_history = await asyncio.to_thread(
+                                    fetch_recent_chat_messages,
+                                    wx,
+                                    event.chat_name,
+                                    bot_cfg,
+                                    memory_seed_load_more,
+                                    memory_seed_load_more_interval_sec,
+                                )
+                            seed_messages = build_seed_messages(
+                                raw_history,
+                                event.is_group,
+                                str(bot_cfg.get("self_name", "") or ""),
+                                bool(
+                                    bot_cfg.get("group_include_sender", True)
+                                ),
+                            )
+                            seed_messages = trim_seed_messages(
+                                seed_messages, memory_seed_limit, user_text
+                            )
+                            if seed_messages:
+                                inserted = memory.add_messages(
+                                    chat_id, seed_messages
+                                )
+                                logging.info(
+                                    "已录入历史条数=%s | 会话=%s",
+                                    inserted,
+                                    event.chat_name,
+                                )
+                        except Exception as exc:
+                            logging.warning("memory seed failed: %s", exc)
                 if memory and user_text.strip():
                     try:
                         memory.add_message(chat_id, "user", user_text)
@@ -1753,6 +1892,37 @@ async def main() -> None:
                             ),
                             memory_context_limit,
                             min_value=0,
+                        )
+                        memory_seed_on_first_reply = bool(
+                            bot_cfg.get(
+                                "memory_seed_on_first_reply",
+                                memory_seed_on_first_reply,
+                            )
+                        )
+                        memory_seed_limit = as_int(
+                            bot_cfg.get("memory_seed_limit", memory_seed_limit),
+                            memory_seed_limit,
+                            min_value=0,
+                        )
+                        memory_seed_load_more = as_int(
+                            bot_cfg.get(
+                                "memory_seed_load_more", memory_seed_load_more
+                            ),
+                            memory_seed_load_more,
+                            min_value=0,
+                        )
+                        memory_seed_load_more_interval_sec = as_float(
+                            bot_cfg.get(
+                                "memory_seed_load_more_interval_sec",
+                                memory_seed_load_more_interval_sec,
+                            ),
+                            memory_seed_load_more_interval_sec,
+                            min_value=0.0,
+                        )
+                        memory_seed_group = bool(
+                            bot_cfg.get(
+                                "memory_seed_group", memory_seed_group
+                            )
                         )
                         max_concurrency = as_int(
                             bot_cfg.get("max_concurrency", max_concurrency),
