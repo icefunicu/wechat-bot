@@ -1,13 +1,28 @@
 """
-微信 AI 自动回复机器人（仅支持 Windows）。
+微信 AI 自动回复机器人主程序（仅支持 Windows）。
+
+功能特性：
+- 多预设 API 探测与自动选择
+- 文本消息自动回复（群聊 @ 识别、发送者前缀）
+- 语音转文字（微信内置功能）
+- 流式/分段回复、随机延迟模拟
+- SQLite 记忆库 + 用户画像管理
+- 情感识别与人性化增强
+- 配置热重载、掉线自动重连
+
 安装步骤：
-  1) pip install -r requirements.txt
-  2) 编辑 config.py（API、白名单等）
-  3) python main.py
+    1) pip install -r requirements.txt
+    2) 编辑 config.py（API、白名单等）
+    3) python main.py
+
+运行环境要求：
+- Windows 10/11
+- 微信 PC 版 3.9.x（不支持 4.x）
+- Python 3.8+
+- 微信已登录并保持运行
 
 注意事项：
 - 使用 wxauto 驱动已登录的微信 PC 客户端（建议 3.9.x）
-- 保持微信已登录且运行中
 - 建议先用小号测试，自动化存在风险
 """
 
@@ -27,6 +42,22 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import ai_client as ai_module
 from memory import MemoryManager
+from emotion import (
+    EmotionResult,
+    detect_emotion_keywords,
+    get_emotion_response_guide,
+    get_emotion_analysis_prompt,
+    parse_emotion_ai_response,
+    get_fact_extraction_prompt,
+    parse_fact_extraction_response,
+    # 人性化增强
+    get_time_aware_prompt_addition,
+    analyze_conversation_style,
+    get_style_adaptation_hint,
+    analyze_emotion_trend,
+    get_emotion_trend_hint,
+    get_relationship_evolution_hint,
+)
 
 AIClient = ai_module.AIClient
 try:
@@ -426,14 +457,141 @@ def get_model_alias(ai_client: AIClient) -> str:
     return alias or ai_client.model
 
 
-def resolve_system_prompt(event: MessageEvent, bot_cfg: Dict[str, Any]) -> str:
+def resolve_system_prompt(
+    event: MessageEvent,
+    bot_cfg: Dict[str, Any],
+    user_profile: Optional[Dict[str, Any]] = None,
+    current_emotion: Optional[EmotionResult] = None,
+    memory_context: Optional[List[dict]] = None,
+) -> str:
+    """构建系统提示词，支持用户画像、情绪和人性化增强"""
     base_prompt = normalize_system_prompt(bot_cfg.get("system_prompt", ""))
     overrides = bot_cfg.get("system_prompt_overrides")
     if isinstance(overrides, dict):
         override = overrides.get(event.chat_name)
         if override:
-            return normalize_system_prompt(override)
+            base_prompt = normalize_system_prompt(override)
+
+    enhancements = []
+
+    # ==================== 时间感知 ====================
+    if bot_cfg.get("personalization_enabled", False):
+        time_context = get_time_aware_prompt_addition()
+        if time_context:
+            enhancements.append(time_context)
+
+    # ==================== 对话风格适应 ====================
+    if (
+        memory_context
+        and bot_cfg.get("personalization_enabled", False)
+        and len(memory_context) >= 3
+    ):
+        style_info = analyze_conversation_style(memory_context)
+        style_hint = get_style_adaptation_hint(style_info)
+        if style_hint:
+            enhancements.append(f"【对话风格】{style_hint}")
+
+    # ==================== 注入用户画像 ====================
+    if (
+        user_profile
+        and bot_cfg.get("personalization_enabled", False)
+        and bot_cfg.get("profile_inject_in_prompt", True)
+    ):
+        profile_text = build_profile_prompt(user_profile)
+        if profile_text:
+            enhancements.append(profile_text)
+
+        # 情绪趋势分析
+        emotion_history = user_profile.get("emotion_history", [])
+        if emotion_history and len(emotion_history) >= 2:
+            trend_info = analyze_emotion_trend(emotion_history)
+            trend_hint = get_emotion_trend_hint(trend_info)
+            if trend_hint:
+                enhancements.append(f"【情绪趋势】{trend_hint}")
+
+    # ==================== 当前情绪引导 ====================
+    if (
+        current_emotion
+        and current_emotion.emotion != "neutral"
+        and bot_cfg.get("emotion_detection_enabled", False)
+        and bot_cfg.get("emotion_inject_in_prompt", True)
+    ):
+        # 更自然的情绪描述
+        emotion_cn = {
+            "happy": "开心",
+            "sad": "难过",
+            "angry": "生气",
+            "anxious": "焦虑",
+            "excited": "兴奋",
+            "tired": "疲惫",
+            "confused": "困惑",
+        }.get(current_emotion.emotion, current_emotion.emotion)
+
+        intensity_desc = {1: "略微", 2: "有些", 3: "比较", 4: "非常", 5: "极其"}.get(
+            current_emotion.intensity, ""
+        )
+
+        emotion_guide = get_emotion_response_guide(current_emotion.emotion)
+        emotion_text = (
+            f"【用户当前情绪】{intensity_desc}{emotion_cn}\n"
+            f"回应建议：{emotion_guide}"
+        )
+        enhancements.append(emotion_text)
+
+    # 组合所有增强内容
+    if enhancements:
+        enhancement_text = "\n\n".join(enhancements)
+        base_prompt = f"{base_prompt}\n\n{enhancement_text}"
+
     return base_prompt
+
+
+def build_profile_prompt(profile: Dict[str, Any]) -> str:
+    """将用户画像格式化为 prompt 文本"""
+    if not profile:
+        return ""
+    parts = ["【用户画像】"]
+    has_content = False
+
+    if profile.get("nickname"):
+        parts.append(f"- 昵称：{profile['nickname']}")
+        has_content = True
+
+    relationship = profile.get("relationship", "unknown")
+    if relationship and relationship != "unknown":
+        rel_names = {
+            "friend": "朋友",
+            "close_friend": "好友",
+            "family": "家人",
+            "colleague": "同事",
+            "stranger": "陌生人",
+        }
+        parts.append(f"- 关系：{rel_names.get(relationship, relationship)}")
+        has_content = True
+
+    if profile.get("personality"):
+        parts.append(f"- 性格特征：{profile['personality']}")
+        has_content = True
+
+    facts = profile.get("context_facts", [])
+    if facts and isinstance(facts, list):
+        # 只展示最近的 5 条事实
+        recent_facts = facts[-5:]
+        parts.append(f"- 重要信息：{'; '.join(recent_facts)}")
+        has_content = True
+
+    prefs = profile.get("preferences", {})
+    if isinstance(prefs, dict):
+        if prefs.get("topics"):
+            parts.append(f"- 感兴趣话题：{', '.join(prefs['topics'][:5])}")
+            has_content = True
+        if prefs.get("style"):
+            parts.append(f"- 沟通风格偏好：{prefs['style']}")
+            has_content = True
+
+    if not has_content:
+        return ""
+    return "\n".join(parts)
 
 
 def format_user_text(event: MessageEvent, bot_cfg: Dict[str, Any]) -> str:
@@ -1465,7 +1623,88 @@ async def main() -> None:
                         logging.warning("memory load failed: %s", exc)
                 memory_context = recent_context
                 history_context_text = build_history_context_text(recent_context)
-                system_prompt = resolve_system_prompt(event, bot_cfg)
+
+                # ==================== 情感检测 ====================
+                current_emotion: Optional[EmotionResult] = None
+                if bot_cfg.get("emotion_detection_enabled", False) and user_text.strip():
+                    emotion_mode = str(bot_cfg.get("emotion_detection_mode", "keywords")).lower()
+                    try:
+                        if emotion_mode == "ai":
+                            # AI 模式：调用 AI 分析情绪
+                            emotion_prompt = get_emotion_analysis_prompt(user_text)
+                            emotion_response = await ai_client.generate_reply(
+                                f"__emotion__{chat_id}",
+                                emotion_prompt,
+                                system_prompt="你是一个情感分析助手，只返回 JSON 格式的分析结果。",
+                            )
+                            if emotion_response:
+                                current_emotion = parse_emotion_ai_response(emotion_response)
+                            if not current_emotion:
+                                # AI 分析失败，回退到关键词模式
+                                current_emotion = detect_emotion_keywords(user_text)
+                        else:
+                            # 关键词模式
+                            current_emotion = detect_emotion_keywords(user_text)
+
+                        # 记录情绪到用户画像
+                        if current_emotion and memory:
+                            try:
+                                memory.update_emotion(chat_id, current_emotion.emotion)
+                            except Exception as exc:
+                                logging.warning("emotion update failed: %s", exc)
+
+                        if current_emotion and bot_cfg.get("emotion_log_enabled", False):
+                            logging.info(
+                                "情绪检测 | 会话=%s | 情绪=%s | 置信度=%.0f%% | 强度=%d/5",
+                                event.chat_name,
+                                current_emotion.emotion,
+                                current_emotion.confidence * 100,
+                                current_emotion.intensity,
+                            )
+                    except Exception as exc:
+                        logging.warning("emotion detection failed: %s", exc)
+
+                # ==================== 加载用户画像 ====================
+                user_profile: Optional[Dict[str, Any]] = None
+                if memory and bot_cfg.get("personalization_enabled", False):
+                    try:
+                        user_profile = memory.get_user_profile(chat_id)
+                        # 增加消息计数
+                        msg_count = memory.increment_message_count(chat_id)
+                        # 日志记录（仅在调试模式）
+                        if user_profile and user_profile.get("message_count", 0) > 0:
+                            logging.debug(
+                                "加载用户画像 | 会话=%s | 消息数=%d | 关系=%s",
+                                event.chat_name,
+                                msg_count,
+                                user_profile.get("relationship", "unknown"),
+                            )
+                    except Exception as exc:
+                        logging.warning("profile load failed: %s", exc)
+
+                # 构建增强的系统提示词（包含时间感知、风格适配、情绪趋势）
+                system_prompt = resolve_system_prompt(
+                    event, bot_cfg, user_profile, current_emotion, memory_context
+                )
+
+                # ==================== 关系自动演进 ====================
+                if user_profile and memory and bot_cfg.get("personalization_enabled", False):
+                    try:
+                        msg_count = user_profile.get("message_count", 0)
+                        current_rel = user_profile.get("relationship", "unknown")
+                        new_rel = get_relationship_evolution_hint(msg_count, current_rel)
+                        if new_rel and new_rel != current_rel:
+                            memory.update_user_profile(chat_id, relationship=new_rel)
+                            logging.info(
+                                "关系演进 | 会话=%s | %s -> %s | 消息数=%d",
+                                event.chat_name,
+                                current_rel,
+                                new_rel,
+                                msg_count,
+                            )
+                    except Exception as exc:
+                        logging.warning("relationship evolution failed: %s", exc)
+
                 if "{history_context}" in system_prompt:
                     system_prompt = system_prompt.replace(
                         "{history_context}", history_context_text
@@ -1769,6 +2008,55 @@ async def main() -> None:
                         memory.add_message(chat_id, "assistant", reply_tokens_text)
                     except Exception as exc:
                         logging.warning("memory write failed: %s", exc)
+
+                    # ==================== 事实提取（异步后台） ====================
+                    if (
+                        bot_cfg.get("personalization_enabled", False)
+                        and bot_cfg.get("remember_facts_enabled", False)
+                        and user_profile
+                    ):
+                        try:
+                            msg_count = user_profile.get("message_count", 0)
+                            update_freq = bot_cfg.get("profile_update_frequency", 10)
+                            # 只在特定频率时触发事实提取（避免每条消息都调用）
+                            if msg_count > 0 and msg_count % update_freq == 0:
+                                existing_facts = user_profile.get("context_facts", [])
+                                fact_prompt = get_fact_extraction_prompt(
+                                    user_text, reply_tokens_text, existing_facts
+                                )
+                                # 使用独立的 chat_id 避免污染对话历史
+                                fact_response = await ai_client.generate_reply(
+                                    f"__facts__{chat_id}",
+                                    fact_prompt,
+                                    system_prompt="你是一个信息提取助手，只返回 JSON 格式的结果。",
+                                )
+                                if fact_response:
+                                    new_facts, rel_hint, traits = parse_fact_extraction_response(
+                                        fact_response
+                                    )
+                                    max_facts = bot_cfg.get("max_context_facts", 20)
+                                    # 添加新事实
+                                    for fact in new_facts:
+                                        memory.add_context_fact(chat_id, fact, max_facts)
+                                    # 更新关系类型（如果有提示）
+                                    if rel_hint:
+                                        current_rel = user_profile.get("relationship", "unknown")
+                                        if current_rel == "unknown":
+                                            memory.update_user_profile(chat_id, relationship=rel_hint)
+                                    # 更新性格特征
+                                    if traits:
+                                        current_personality = user_profile.get("personality", "")
+                                        new_personality = ", ".join(traits[:3])
+                                        if not current_personality:
+                                            memory.update_user_profile(chat_id, personality=new_personality)
+                                    if new_facts:
+                                        logging.info(
+                                            "事实提取 | 会话=%s | 新事实=%s",
+                                            event.chat_name,
+                                            new_facts,
+                                        )
+                        except Exception as exc:
+                            logging.warning("fact extraction failed: %s", exc)
                 user_tokens, reply_tokens, exchange_tokens = estimate_exchange_tokens(
                     ai_client, user_text, reply_tokens_text
                 )

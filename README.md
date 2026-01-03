@@ -4,12 +4,25 @@
 
 ## 功能特性
 
+### 核心功能
 - 多预设 API 探测与自动选择：支持 OpenAI 兼容多家服务，按优先级探测可用模型
 - 文本消息自动回复：消息规范化、群聊 @ 识别、可选发送者前缀
 - 语音转文字：调用微信内置“语音转文字”（可开关，失败可回退回复）
 - 回复策略丰富：流式输出、分段发送、随机延迟、最小回复间隔
 - 消息合并：短时间内连发消息自动合并，避免多次触发模型
-- 记忆与上下文：AI 内存（按轮数/估算 token 裁剪）+ SQLite 记忆库注入（支持 TTL 自动清理）
+
+### 记忆与上下文
+- AI 内存（按轮数/估算 token 裁剪）+ SQLite 记忆库注入（支持 TTL 自动清理）
+- **个性化记忆**：用户画像管理（昵称、关系、性格特征）
+- **事实记忆**：AI 自动提取重要信息（生日、偏好、计划等）
+
+### 情感识别与人性化
+- **情感检测**：支持关键词模式（快速）和 AI 模式（精准）
+- **时间感知**：根据时间段调整回复语气（早安/晚安等）
+- **对话风格适应**：学习并适应用户的沟通风格
+- **关系演进**：基于互动次数自动调整关系亲密度
+
+### 管理与过滤
 - 过滤与白名单：忽略公众号/服务号/关键词/会话名，群聊白名单与 @ 控制
 - 热更新与重连：`config.py` 定时热重载，可重载 AI 客户端模块，掉线自动重连
 - 日志记录：可选记录消息/回复内容，日志文件自动轮转
@@ -40,7 +53,8 @@ python main.py
 
 - `main.py`：入口与主循环，连接微信、轮询消息、过滤与归一化、发送回复、热重载与重连
 - `ai_client.py`：OpenAI 兼容 `/chat/completions` 客户端（httpx 异步 + 流式）
-- `memory.py`：SQLite 记忆库（按会话存储用户/助手消息）
+- `memory.py`：SQLite 记忆库（按会话存储用户/助手消息，用户画像管理）
+- `emotion.py`：情感检测模块（关键词/AI 模式，时间感知，对话风格分析）
 - `config.py`：运行时配置（API 预设、机器人行为、日志）
 - `api_keys.py`：可选密钥文件（已在 `.gitignore` 中）
 - `requirements.txt`：依赖清单
@@ -140,6 +154,19 @@ API_KEYS = {
 - `reconnect_max_retries` / `reconnect_backoff_sec` / `reconnect_max_delay_sec`
 - `reload_ai_client_on_change`：配置变更后重新探测预设
 - `reload_ai_client_module`：检测到 `ai_client.py` 变化时热重载
+
+个性化记忆：
+- `personalization_enabled`：启用个性化功能
+- `profile_update_frequency`：每 N 条消息触发一次画像更新分析
+- `remember_facts_enabled`：启用事实记忆（AI 自动提取重要信息）
+- `max_context_facts`：最多记录的事实数量
+- `profile_inject_in_prompt`：在 prompt 中注入用户画像
+
+情感识别：
+- `emotion_detection_enabled`：启用情感识别
+- `emotion_detection_mode`：`keywords`（快速）或 `ai`（精准）
+- `emotion_inject_in_prompt`：在 prompt 中注入情绪引导
+- `emotion_log_enabled`：记录情绪检测日志
 
 ### 日志配置（`CONFIG["logging"]`）
 

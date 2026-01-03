@@ -1,9 +1,25 @@
 """
 OpenAI 兼容 /chat/completions 的 AI 客户端封装。
-说明：
-- 使用 httpx 异步调用接口（不依赖官方 SDK）。
-- 按会话在内存中保留最近 N 轮对话。
-- 失败时简单重试并退避。
+
+本模块提供了一个轻量级的 OpenAI 兼容 API 客户端，支持：
+- 同步和流式（SSE）响应
+- 按会话管理对话历史
+- 自动重试和退避策略
+- Token 估算和历史裁剪
+
+主要类:
+    AIClient: 核心客户端类，封装了 API 调用和历史管理
+
+使用示例:
+    >>> client = AIClient(
+    ...     base_url="https://api.openai.com/v1",
+    ...     api_key="your-api-key",
+    ...     model="gpt-4o-mini",
+    ... )
+    >>> reply = await client.generate_reply("chat_123", "你好！")
+
+依赖:
+    - httpx: 异步 HTTP 客户端（不依赖官方 OpenAI SDK）
 """
 
 from __future__ import annotations
@@ -18,14 +34,30 @@ from typing import AsyncIterator, Deque, Dict, Iterable, List, Optional
 import httpx
 
 
-DEFAULT_TIMEOUT_SEC = 10.0
-MAX_TIMEOUT_SEC = 10.0
-MAX_RETRIES = 2
+# ═══════════════════════════════════════════════════════════════════════════════
+#                               常量定义
+# ═══════════════════════════════════════════════════════════════════════════════
 
+DEFAULT_TIMEOUT_SEC = 10.0  # 默认超时时间（秒）
+MAX_TIMEOUT_SEC = 10.0      # 最大允许超时时间（秒）
+MAX_RETRIES = 2             # 最大重试次数
+
+# 共享的 HTTP 客户端实例（连接池复用）
 _shared_client: Optional[httpx.AsyncClient] = None
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+#                               辅助函数
+# ═══════════════════════════════════════════════════════════════════════════════
+
 def _get_shared_client() -> httpx.AsyncClient:
+    """获取或创建共享的 HTTP 客户端实例。
+    
+    使用单例模式复用连接池，提高性能。
+    
+    Returns:
+        httpx.AsyncClient: 共享的异步 HTTP 客户端
+    """
     global _shared_client
     if _shared_client is None or _shared_client.is_closed:
         _shared_client = httpx.AsyncClient(
@@ -36,6 +68,7 @@ def _get_shared_client() -> httpx.AsyncClient:
 
 
 def _coerce_timeout(value: float) -> float:
+    """将超时值规范化到有效范围内。"""
     try:
         val = float(value)
     except (TypeError, ValueError):
@@ -46,6 +79,7 @@ def _coerce_timeout(value: float) -> float:
 
 
 def _coerce_retries(value: int) -> int:
+    """将重试次数规范化到有效范围内。"""
     try:
         val = int(value)
     except (TypeError, ValueError):
@@ -55,8 +89,33 @@ def _coerce_retries(value: int) -> int:
     return min(val, MAX_RETRIES)
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+#                               AI 客户端类
+# ═══════════════════════════════════════════════════════════════════════════════
+
 class AIClient:
-    """OpenAI 兼容聊天接口的轻量封装。"""
+    """
+    OpenAI 兼容聊天接口的轻量封装。
+    
+    该类管理会话历史、构建 API 请求、处理重试、
+    并提供同步/流式两种响应方式。
+    
+    Attributes:
+        base_url (str): API 接口基础 URL
+        api_key (str): API 密钥
+        model (str): 模型名称
+        model_alias (str): 模型别名（用于日志和回复后缀）
+        timeout_sec (float): 请求超时时间（秒）
+        max_retries (int): 最大重试次数
+        context_rounds (int): 保留的对话轮数
+        context_max_tokens (int | None): 上下文最大 token 数
+        system_prompt (str): 系统提示词
+        temperature (float | None): 生成温度
+        max_tokens (int | None): 最大输出 token 数
+        history_max_chats (int): 内存中最多保留的会话数
+        history_ttl_sec (float | None): 会话历史过期时间
+    """
+
 
     def __init__(
         self,

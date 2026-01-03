@@ -1,17 +1,64 @@
+"""
+聊天记忆管理模块 - 基于 SQLite 的持久化存储。
+
+本模块提供了轻量级的聊天历史和用户画像管理功能：
+- 按会话存储用户/助手消息历史
+- 支持 TTL 自动清理过期记录
+- 用户画像管理（昵称、关系、偏好、事实记忆）
+- 情绪历史记录
+
+主要类:
+    MemoryManager: 核心管理器类，封装了所有数据库操作
+
+使用示例:
+    >>> manager = MemoryManager("chat_history.db")
+    >>> manager.add_message("user_123", "user", "你好！")
+    >>> context = manager.get_recent_context("user_123", limit=10)
+"""
+
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 import threading
 import time
-from typing import Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                               常量定义
+# ═══════════════════════════════════════════════════════════════════════════════
 
 ALLOWED_ROLES = {"user", "assistant", "system"}
 
+# 默认用户画像模板
+DEFAULT_USER_PROFILE = {
+    "nickname": "",
+    "relationship": "unknown",  # unknown/friend/close_friend/family/colleague/stranger
+    "personality": "",
+    "preferences": {},  # {"topics": [], "style": "", "likes": [], "dislikes": []}
+    "context_facts": [],  # ["生日是5月1日", "喜欢猫", ...]
+    "last_emotion": "neutral",
+    "emotion_history": [],  # 最近 N 次情绪记录
+    "message_count": 0,
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+#                               记忆管理器类
+# ═══════════════════════════════════════════════════════════════════════════════
 
 class MemoryManager:
-    """Lightweight SQLite-backed chat history storage with optional TTL cleanup."""
+    """
+    基于 SQLite 的轻量级聊天历史存储管理器。
+    
+    支持消息历史存储、用户画像管理、TTL 自动清理等功能。
+    线程安全，可在多线程环境中使用。
+    
+    Attributes:
+        db_path (str): SQLite 数据库文件路径
+    """
 
     def __init__(
         self,
@@ -46,6 +93,21 @@ class MemoryManager:
             self._conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_chat_history_wx_id_id "
                 "ON chat_history (wx_id, id)"
+            )
+            # 用户画像表
+            self._conn.execute(
+                "CREATE TABLE IF NOT EXISTS user_profiles ("
+                "wx_id TEXT PRIMARY KEY,"
+                "nickname TEXT DEFAULT '',"
+                "relationship TEXT DEFAULT 'unknown',"
+                "personality TEXT DEFAULT '',"
+                "preferences TEXT DEFAULT '{}',"
+                "context_facts TEXT DEFAULT '[]',"
+                "last_emotion TEXT DEFAULT 'neutral',"
+                "emotion_history TEXT DEFAULT '[]',"
+                "message_count INTEGER DEFAULT 0,"
+                "updated_at INTEGER NOT NULL"
+                ")"
             )
             self._conn.commit()
 
@@ -183,6 +245,135 @@ class MemoryManager:
                 continue
             context.append({"role": row["role"], "content": content})
         return context
+
+    # ==================== 用户画像方法 ====================
+
+    def get_user_profile(self, wx_id: str) -> Dict[str, Any]:
+        """获取用户画像，如果不存在则返回默认画像"""
+        wx_id = str(wx_id).strip()
+        if not wx_id:
+            return dict(DEFAULT_USER_PROFILE)
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT * FROM user_profiles WHERE wx_id = ?",
+                (wx_id,),
+            ).fetchone()
+        if row is None:
+            return dict(DEFAULT_USER_PROFILE)
+        profile = dict(DEFAULT_USER_PROFILE)
+        profile["nickname"] = row["nickname"] or ""
+        profile["relationship"] = row["relationship"] or "unknown"
+        profile["personality"] = row["personality"] or ""
+        profile["last_emotion"] = row["last_emotion"] or "neutral"
+        profile["message_count"] = row["message_count"] or 0
+        # 解析 JSON 字段
+        try:
+            profile["preferences"] = json.loads(row["preferences"] or "{}")
+        except (json.JSONDecodeError, TypeError):
+            profile["preferences"] = {}
+        try:
+            profile["context_facts"] = json.loads(row["context_facts"] or "[]")
+        except (json.JSONDecodeError, TypeError):
+            profile["context_facts"] = []
+        try:
+            profile["emotion_history"] = json.loads(row["emotion_history"] or "[]")
+        except (json.JSONDecodeError, TypeError):
+            profile["emotion_history"] = []
+        return profile
+
+    def _ensure_user_profile(self, wx_id: str) -> None:
+        """确保用户画像存在，不存在则创建"""
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR IGNORE INTO user_profiles (wx_id, updated_at) VALUES (?, ?)",
+                (wx_id, int(time.time())),
+            )
+            self._conn.commit()
+
+    def update_user_profile(self, wx_id: str, **fields: Any) -> None:
+        """更新用户画像的指定字段"""
+        wx_id = str(wx_id).strip()
+        if not wx_id:
+            return
+        self._ensure_user_profile(wx_id)
+        allowed_fields = {
+            "nickname", "relationship", "personality", "preferences",
+            "context_facts", "last_emotion", "emotion_history", "message_count"
+        }
+        updates = []
+        values = []
+        for key, value in fields.items():
+            if key not in allowed_fields:
+                continue
+            if key in ("preferences", "context_facts", "emotion_history"):
+                value = json.dumps(value, ensure_ascii=False)
+            updates.append(f"{key} = ?")
+            values.append(value)
+        if not updates:
+            return
+        updates.append("updated_at = ?")
+        values.append(int(time.time()))
+        values.append(wx_id)
+        sql = f"UPDATE user_profiles SET {', '.join(updates)} WHERE wx_id = ?"
+        with self._lock:
+            self._conn.execute(sql, values)
+            self._conn.commit()
+
+    def add_context_fact(self, wx_id: str, fact: str, max_facts: int = 20) -> None:
+        """添加一条事实信息到用户画像"""
+        wx_id = str(wx_id).strip()
+        fact = str(fact).strip()
+        if not wx_id or not fact:
+            return
+        profile = self.get_user_profile(wx_id)
+        facts = profile.get("context_facts", [])
+        if not isinstance(facts, list):
+            facts = []
+        # 避免重复
+        if fact not in facts:
+            facts.append(fact)
+            # 限制数量
+            if len(facts) > max_facts:
+                facts = facts[-max_facts:]
+            self.update_user_profile(wx_id, context_facts=facts)
+
+    def update_emotion(
+        self, wx_id: str, emotion: str, max_history: int = 10
+    ) -> None:
+        """更新用户的当前情绪，并记录到历史"""
+        wx_id = str(wx_id).strip()
+        emotion = str(emotion).strip().lower()
+        if not wx_id or not emotion:
+            return
+        profile = self.get_user_profile(wx_id)
+        history = profile.get("emotion_history", [])
+        if not isinstance(history, list):
+            history = []
+        history.append({"emotion": emotion, "timestamp": int(time.time())})
+        if len(history) > max_history:
+            history = history[-max_history:]
+        self.update_user_profile(
+            wx_id, last_emotion=emotion, emotion_history=history
+        )
+
+    def increment_message_count(self, wx_id: str) -> int:
+        """增加用户消息计数并返回新值"""
+        wx_id = str(wx_id).strip()
+        if not wx_id:
+            return 0
+        self._ensure_user_profile(wx_id)
+        with self._lock:
+            self._conn.execute(
+                "UPDATE user_profiles SET message_count = message_count + 1, "
+                "updated_at = ? WHERE wx_id = ?",
+                (int(time.time()), wx_id),
+            )
+            self._conn.commit()
+            row = self._conn.execute(
+                "SELECT message_count FROM user_profiles WHERE wx_id = ?",
+                (wx_id,),
+            ).fetchone()
+        return row["message_count"] if row else 0
 
     def close(self) -> None:
         with self._lock:
