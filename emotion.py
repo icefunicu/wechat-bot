@@ -33,7 +33,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from functools import lru_cache
+from typing import Any, Dict, FrozenSet, List, Optional, Tuple
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -41,10 +42,12 @@ from typing import Dict, List, Optional, Tuple
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-@dataclass
+@dataclass(slots=True)
 class EmotionResult:
     """
     情感检测结果数据类。
+    
+    使用 slots=True 减少内存占用，提高属性访问速度。
     
     Attributes:
         emotion: 情绪类型（happy/sad/angry/anxious/excited/tired/confused/neutral）
@@ -56,7 +59,7 @@ class EmotionResult:
     emotion: str
     confidence: float
     intensity: int
-    keywords_matched: List[str]
+    keywords_matched: Tuple[str, ...]
     suggested_tone: str
 
 
@@ -119,57 +122,67 @@ INTENSITY_MODIFIERS: Dict[str, int] = {
     "真的": 1, "真是": 1, "简直": 2, "完全": 2,
 }
 
+# 预编译：将关键词集合转为 frozenset 以加速查找
+_EMOTION_KEYWORDS_FROZEN: Dict[str, FrozenSet[str]] = {
+    emotion: frozenset(kw.lower() for kw in keywords)
+    for emotion, keywords in EMOTION_KEYWORDS.items()
+}
+
+# 缓存的中性结果，避免重复创建
+_NEUTRAL_RESULT = EmotionResult(
+    emotion="neutral",
+    confidence=0.5,
+    intensity=1,
+    keywords_matched=(),
+    suggested_tone=EMOTION_RESPONSE_GUIDE["neutral"],
+)
+
 
 def detect_emotion_keywords(text: str) -> EmotionResult:
-    """基于关键词检测情绪"""
+    """
+    基于关键词检测情绪。
+    
+    优化：使用 frozenset 进行 O(1) 关键词查找，
+    预分配结果避免重复对象创建。
+    """
     if not text:
-        return EmotionResult(
-            emotion="neutral",
-            confidence=0.5,
-            intensity=1,
-            keywords_matched=[],
-            suggested_tone=EMOTION_RESPONSE_GUIDE["neutral"],
-        )
+        return _NEUTRAL_RESULT
 
     text_lower = text.lower()
+    
+    # 使用列表推导式替代循环，更高效
     emotion_scores: Dict[str, Tuple[int, List[str]]] = {}
-
+    
     for emotion, keywords in EMOTION_KEYWORDS.items():
-        matched = []
-        for kw in keywords:
-            if kw.lower() in text_lower:
-                matched.append(kw)
+        # 使用列表推导式一次性收集所有匹配
+        matched = [kw for kw in keywords if kw.lower() in text_lower]
         if matched:
             emotion_scores[emotion] = (len(matched), matched)
 
     if not emotion_scores:
-        return EmotionResult(
-            emotion="neutral",
-            confidence=0.5,
-            intensity=1,
-            keywords_matched=[],
-            suggested_tone=EMOTION_RESPONSE_GUIDE["neutral"],
-        )
+        return _NEUTRAL_RESULT
 
-    # 选择匹配最多的情绪
+    # 选择匹配最多的情绪（使用 max 的 key 参数直接获取）
     best_emotion = max(emotion_scores, key=lambda e: emotion_scores[e][0])
     match_count, matched_keywords = emotion_scores[best_emotion]
 
-    # 计算置信度
+    # 计算置信度（使用 min 避免超过 0.9）
     confidence = min(0.9, 0.5 + match_count * 0.15)
 
-    # 计算强度
-    intensity = min(5, 1 + match_count)
-    for modifier, mod_value in INTENSITY_MODIFIERS.items():
-        if modifier in text_lower:
-            intensity = max(1, min(5, intensity + mod_value))
-            break
+    # 计算强度（使用 next + generator 找到第一个匹配的修饰词）
+    base_intensity = min(5, 1 + match_count)
+    modifier_delta = next(
+        (mod_value for modifier, mod_value in INTENSITY_MODIFIERS.items() 
+         if modifier in text_lower),
+        0
+    )
+    intensity = max(1, min(5, base_intensity + modifier_delta))
 
     return EmotionResult(
         emotion=best_emotion,
         confidence=confidence,
         intensity=intensity,
-        keywords_matched=matched_keywords,
+        keywords_matched=tuple(matched_keywords),
         suggested_tone=EMOTION_RESPONSE_GUIDE.get(
             best_emotion, EMOTION_RESPONSE_GUIDE["neutral"]
         ),

@@ -29,7 +29,8 @@ import json
 import logging
 import time
 from collections import OrderedDict, deque
-from typing import AsyncIterator, Deque, Dict, Iterable, List, Optional
+from functools import lru_cache
+from typing import AsyncIterator, Deque, Dict, Iterable, List, Optional, Tuple
 
 import httpx
 
@@ -44,6 +45,20 @@ MAX_RETRIES = 2             # 最大重试次数
 
 # 共享的 HTTP 客户端实例（连接池复用）
 _shared_client: Optional[httpx.AsyncClient] = None
+
+
+def _is_cjk_char(code: int) -> bool:
+    """
+    判断字符码点是否为 CJK 字符。
+    
+    包括：中日韩统一表意文字、扩展区、平假名、片假名、韩语字母。
+    """
+    return (
+        0x4e00 <= code <= 0x9fff    # CJK 统一表意文字基本区
+        or 0x3400 <= code <= 0x4dbf  # CJK 扩展区 A
+        or 0x3040 <= code <= 0x30ff  # 日语平假名和片假名
+        or 0xac00 <= code <= 0xd7af  # 韩语字母
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -497,31 +512,35 @@ class AIClient:
             self._history_timestamps.pop(oldest_chat_id, None)
             self._chat_locks.pop(oldest_chat_id, None)
 
-    def _estimate_text_tokens(self, text: str) -> int:
+    @staticmethod
+    @lru_cache(maxsize=1024)
+    def _estimate_text_tokens_cached(text: str) -> int:
+        """
+        估算文本的 token 数量（带缓存）。
+        
+        使用 LRU 缓存避免重复计算相同文本。
+        """
         if not text:
             return 0
-        cjk = 0
-        for ch in text:
-            code = ord(ch)
-            # CJK 统一表意文字基本区
-            if 0x4e00 <= code <= 0x9fff:
-                cjk += 1
-            # CJK 扩展区 A
-            elif 0x3400 <= code <= 0x4dbf:
-                cjk += 1
-            # 日语平假名和片假名
-            elif 0x3040 <= code <= 0x30ff:
-                cjk += 1
-            # 韩语字母
-            elif 0xac00 <= code <= 0xd7af:
-                cjk += 1
-        ascii_count = max(0, len(text) - cjk)
-        ascii_tokens = max(1, ascii_count // 4) if ascii_count else 0
+        
+        # 使用生成器表达式计算 CJK 字符数，更内存高效
+        cjk = sum(
+            1 for ch in text
+            if _is_cjk_char(ord(ch))
+        )
+        
+        ascii_count = len(text) - cjk
+        ascii_tokens = max(1, ascii_count // 4) if ascii_count > 0 else 0
         return cjk + ascii_tokens
 
+    def _estimate_text_tokens(self, text: str) -> int:
+        """估算文本的 token 数量。"""
+        return self._estimate_text_tokens_cached(text)
+
     def _estimate_message_tokens(self, message: dict) -> int:
+        """估算单条消息的 token 数量（内容 + 元数据开销）。"""
         content = str(message.get("content", "") or "")
-        return self._estimate_text_tokens(content) + 4
+        return self._estimate_text_tokens_cached(content) + 4
 
     def _estimate_messages_tokens(self, messages: List[dict]) -> int:
         return sum(self._estimate_message_tokens(msg) for msg in messages)

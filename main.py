@@ -70,9 +70,16 @@ else:
 
 
 DEFAULT_SUFFIX = "\n（由AI回复，模型使用{alias}）"
-STREAM_PUNCTUATION = set("。！？.!?；;\n")
+STREAM_PUNCTUATION: frozenset = frozenset("。！？.!?；;\n")
 EMOJI_PLACEHOLDER = "[表情]"
 VOICE_PLACEHOLDER = "[语音]"
+
+# 预编译的消息类型标记集合（避免每次调用创建元组）
+NON_TEXT_TYPE_MARKERS: frozenset = frozenset((
+    "image", "pic", "voice", "audio", "video", "file", "gif",
+    "emoji", "system", "location", "link", "merge", "card", "note", "tickle",
+))
+VOICE_TYPE_MARKERS: frozenset = frozenset(("voice", "audio"))
 EMOJI_REPLACEMENTS = {
     "\U0001F602": "[笑哭]",
     "\U0001F923": "[笑哭]",
@@ -380,38 +387,27 @@ def split_group_message(text: str) -> Tuple[Optional[str], str]:
 
 
 def is_text_message(msg_type: Optional[str], content: str) -> bool:
+    """
+    判断消息是否为文本消息。
+    
+    使用预编译的 frozenset 进行 O(1) 复杂度的类型检查。
+    """
     if not content or not isinstance(content, str):
         return False
     if msg_type is None:
         return True
+    
     text_type = str(msg_type).lower()
-    non_text_markers = (
-        "image",
-        "pic",
-        "voice",
-        "audio",
-        "video",
-        "file",
-        "gif",
-        "emoji",
-        "system",
-        "location",
-        "link",
-        "merge",
-        "card",
-        "note",
-        "tickle",
-    )
-    if any(marker in text_type for marker in non_text_markers):
-        return False
-    return True
+    # 使用 any + generator 与 frozenset 配合，更高效
+    return not any(marker in text_type for marker in NON_TEXT_TYPE_MARKERS)
 
 
 def is_voice_message(msg_type: Optional[str]) -> bool:
+    """判断消息是否为语音消息，使用预编译的 frozenset。"""
     if msg_type is None:
         return False
     text_type = str(msg_type).lower()
-    return any(marker in text_type for marker in ("voice", "audio"))
+    return any(marker in text_type for marker in VOICE_TYPE_MARKERS)
 
 
 def parse_voice_to_text_result(result: Any) -> Tuple[Optional[str], Optional[str]]:

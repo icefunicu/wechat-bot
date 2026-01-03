@@ -30,7 +30,11 @@ from typing import Any, Dict, Iterable, List, Optional
 #                               常量定义
 # ═══════════════════════════════════════════════════════════════════════════════
 
-ALLOWED_ROLES = {"user", "assistant", "system"}
+# 使用 frozenset 加速成员检查（O(1) 复杂度）
+ALLOWED_ROLES: frozenset = frozenset({"user", "assistant", "system"})
+
+# JSON 字段集合（优化 update_user_profile 中的字段类型检查）
+_JSON_FIELDS: frozenset = frozenset({"preferences", "context_facts", "emotion_history"})
 
 # 默认用户画像模板
 DEFAULT_USER_PROFILE = {
@@ -56,9 +60,19 @@ class MemoryManager:
     支持消息历史存储、用户画像管理、TTL 自动清理等功能。
     线程安全，可在多线程环境中使用。
     
+    支持上下文管理器协议：
+        with MemoryManager("chat.db") as manager:
+            manager.add_message(...)
+    
     Attributes:
         db_path (str): SQLite 数据库文件路径
     """
+    
+    # 允许更新的用户画像字段（使用 frozenset 加速查找）
+    _ALLOWED_PROFILE_FIELDS: frozenset = frozenset({
+        "nickname", "relationship", "personality", "preferences",
+        "context_facts", "last_emotion", "emotion_history", "message_count"
+    })
 
     def __init__(
         self,
@@ -78,6 +92,15 @@ class MemoryManager:
         self._last_cleanup_ts = 0.0
         self._init_db()
         self._maybe_cleanup(force=True)
+
+    def __enter__(self) -> "MemoryManager":
+        """上下文管理器入口。"""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        """上下文管理器出口，自动关闭连接。"""
+        self.close()
+        return None
 
     def _init_db(self) -> None:
         with self._lock:
@@ -291,29 +314,35 @@ class MemoryManager:
             self._conn.commit()
 
     def update_user_profile(self, wx_id: str, **fields: Any) -> None:
-        """更新用户画像的指定字段"""
+        """
+        更新用户画像的指定字段。
+        
+        只允许更新预定义的字段，JSON 字段会自动序列化。
+        """
         wx_id = str(wx_id).strip()
         if not wx_id:
             return
         self._ensure_user_profile(wx_id)
-        allowed_fields = {
-            "nickname", "relationship", "personality", "preferences",
-            "context_facts", "last_emotion", "emotion_history", "message_count"
-        }
-        updates = []
-        values = []
+        
+        updates: List[str] = []
+        values: List[Any] = []
+        
         for key, value in fields.items():
-            if key not in allowed_fields:
+            if key not in self._ALLOWED_PROFILE_FIELDS:
                 continue
-            if key in ("preferences", "context_facts", "emotion_history"):
+            # JSON 字段需要序列化
+            if key in _JSON_FIELDS:
                 value = json.dumps(value, ensure_ascii=False)
             updates.append(f"{key} = ?")
             values.append(value)
+        
         if not updates:
             return
+        
         updates.append("updated_at = ?")
         values.append(int(time.time()))
         values.append(wx_id)
+        
         sql = f"UPDATE user_profiles SET {', '.join(updates)} WHERE wx_id = ?"
         with self._lock:
             self._conn.execute(sql, values)
