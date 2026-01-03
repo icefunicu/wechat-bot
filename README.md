@@ -87,6 +87,11 @@ API_KEYS = {
 - `system_prompt`：系统提示词，可包含 `{history_context}`
 - `system_prompt_overrides`：按会话名覆盖系统提示词
 - `reply_suffix`：回复后缀，支持 `{alias}` / `{model}`
+- `reply_quote_mode`：引用方式，`wechat` 使用微信原生引用，`text` 为文本引用，`none` 关闭
+- `reply_quote_template`：文本引用模板，支持 `{content}` / `{sender}` / `{chat}`
+- `reply_quote_max_chars`：引用最大长度，0 表示不引用
+- `reply_quote_timeout_sec`：微信引用超时（秒）
+- `reply_quote_fallback_to_text`：微信引用失败时是否降级为文本引用
 
 记忆与上下文：
 - `context_rounds`：对话轮数上限

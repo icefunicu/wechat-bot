@@ -189,6 +189,11 @@ CONFIG = {  # 全局配置字典
             # "某个好友/群名": "这里写覆盖后的系统提示词",
         },
         "reply_suffix": "\n （🤖💬 AI代言中～）",  # 回复末尾追加（支持 {alias} / {model}）
+        "reply_quote_mode": "wechat",  # 引用方式：wechat/text/none
+        "reply_quote_template": "引用：{content}\n",  # 文本引用模板（支持 {content}/{sender}/{chat}）
+        "reply_quote_max_chars": 120,  # 文本引用最大长度，0 表示不引用
+        "reply_quote_timeout_sec": 3.0,  # 微信引用超时（秒）
+        "reply_quote_fallback_to_text": True,  # 微信引用失败时降级为文本引用
         "emoji_policy": 'mixed',  # emoji 处理：wechat/strip/keep/mixed
         "emoji_replacements": {},  # 自定义 emoji -> 微信表情文本
         "voice_to_text": True,  # 语音转文字（使用微信内置“语音转文字”）

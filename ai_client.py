@@ -28,7 +28,10 @@ _shared_client: Optional[httpx.AsyncClient] = None
 def _get_shared_client() -> httpx.AsyncClient:
     global _shared_client
     if _shared_client is None or _shared_client.is_closed:
-        _shared_client = httpx.AsyncClient(timeout=DEFAULT_TIMEOUT_SEC)
+        _shared_client = httpx.AsyncClient(
+            timeout=DEFAULT_TIMEOUT_SEC,
+            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+        )
     return _shared_client
 
 
@@ -440,7 +443,18 @@ class AIClient:
             return 0
         cjk = 0
         for ch in text:
-            if "\u4e00" <= ch <= "\u9fff":
+            code = ord(ch)
+            # CJK 统一表意文字基本区
+            if 0x4e00 <= code <= 0x9fff:
+                cjk += 1
+            # CJK 扩展区 A
+            elif 0x3400 <= code <= 0x4dbf:
+                cjk += 1
+            # 日语平假名和片假名
+            elif 0x3040 <= code <= 0x30ff:
+                cjk += 1
+            # 韩语字母
+            elif 0xac00 <= code <= 0xd7af:
                 cjk += 1
         ascii_count = max(0, len(text) - cjk)
         ascii_tokens = max(1, ascii_count // 4) if ascii_count else 0

@@ -542,6 +542,35 @@ def truncate_text(text: str, max_len: int = 120) -> str:
     return text if len(text) <= max_len else text[:max_len] + "..."
 
 
+def build_reply_quote_text(
+    event: MessageEvent, user_text: str, bot_cfg: Dict[str, Any]
+) -> str:
+    template = bot_cfg.get("reply_quote_template")
+    if template is None:
+        return ""
+    template = str(template)
+    if not template.strip():
+        return ""
+    max_chars = as_int(
+        bot_cfg.get("reply_quote_max_chars", 120), 120, min_value=0
+    )
+    if max_chars <= 0:
+        return ""
+    content = str(user_text or "").strip()
+    if not content:
+        return ""
+    content = truncate_text(content, max_len=max_chars)
+    try:
+        return template.format(
+            content=content,
+            sender=event.sender or "",
+            chat=event.chat_name or "",
+        )
+    except Exception:
+        logging.warning("reply_quote_template 模板错误，已忽略引用。")
+        return ""
+
+
 def format_log_text(text: str, enabled: bool, max_len: int = 120) -> str:
     if not enabled:
         return "[hidden]"
@@ -980,7 +1009,15 @@ def should_reply(event: MessageEvent, config: Dict[str, Any]) -> bool:
 
 
 def parse_send_result(result: Any) -> Tuple[bool, Optional[str]]:
+    if hasattr(result, "is_success"):
+        message = getattr(result, "message", None) or getattr(result, "error", None)
+        return bool(result), message
     if isinstance(result, dict):
+        if "status" in result:
+            status = str(result.get("status") or "")
+            if status != "成功":
+                return False, result.get("message") or result.get("error")
+            return True, result.get("message")
         if result.get("success") is False:
             return False, result.get("message") or result.get("error")
         if "code" in result and result.get("code") not in (0, "0", None):
@@ -1052,6 +1089,21 @@ def send_message(
     return ok, err_msg
 
 
+def send_quote_message(
+    quote_item: Any, text: str, timeout_sec: float
+) -> Tuple[bool, Optional[str]]:
+    if quote_item is None:
+        return False, "quote item missing"
+    quote_func = getattr(quote_item, "quote", None)
+    if not callable(quote_func):
+        return False, "quote not supported"
+    try:
+        result = quote_func(text, timeout=timeout_sec)
+    except Exception as exc:
+        return False, str(exc)
+    return parse_send_result(result)
+
+
 async def send_reply_chunks(
     wx: "WeChat",
     chat_name: str,
@@ -1062,8 +1114,12 @@ async def send_reply_chunks(
     min_reply_interval: float,
     last_reply_ts: Dict[str, float],
     wx_lock: asyncio.Lock,
+    quote_item: Optional[Any] = None,
+    quote_timeout_sec: float = 3.0,
+    quote_fallback_text: Optional[str] = None,
 ) -> Tuple[bool, Optional[str]]:
     chunks = split_reply_chunks(text, chunk_size)
+    quote_used = False
     for idx, chunk in enumerate(chunks):
         if not chunk:
             continue
@@ -1071,11 +1127,28 @@ async def send_reply_chunks(
             elapsed = time.time() - last_reply_ts.get("ts", 0.0)
             if elapsed < min_reply_interval:
                 await asyncio.sleep(min_reply_interval - elapsed)
-            ok, err_msg = await asyncio.to_thread(
-                send_message, wx, chat_name, chunk, bot_cfg
-            )
-            if not ok:
-                return False, err_msg
+            if quote_item is not None and not quote_used:
+                ok, err_msg = await asyncio.to_thread(
+                    send_quote_message, quote_item, chunk, quote_timeout_sec
+                )
+                quote_used = True
+                if not ok and quote_fallback_text is not None:
+                    fallback_chunk = (
+                        f"{quote_fallback_text}{chunk}"
+                        if quote_fallback_text
+                        else chunk
+                    )
+                    ok, err_msg = await asyncio.to_thread(
+                        send_message, wx, chat_name, fallback_chunk, bot_cfg
+                    )
+                if not ok:
+                    return False, err_msg
+            else:
+                ok, err_msg = await asyncio.to_thread(
+                    send_message, wx, chat_name, chunk, bot_cfg
+                )
+                if not ok:
+                    return False, err_msg
             last_reply_ts["ts"] = time.time()
         if idx < len(chunks) - 1 and chunk_delay_sec > 0:
             await asyncio.sleep(chunk_delay_sec)
@@ -1408,6 +1481,83 @@ async def main() -> None:
                             ai_client.model,
                             get_model_alias(ai_client),
                         )
+                reply_quote_mode = str(
+                    bot_cfg.get("reply_quote_mode", "wechat")
+                ).strip().lower()
+                reply_quote_timeout_sec = as_float(
+                    bot_cfg.get("reply_quote_timeout_sec", 3.0),
+                    3.0,
+                    min_value=0.0,
+                )
+                reply_quote_fallback = bool(
+                    bot_cfg.get("reply_quote_fallback_to_text", True)
+                )
+                use_wechat_quote = reply_quote_mode in ("wechat", "wx", "native")
+                use_text_quote = reply_quote_mode in ("text", "plain", "prefix")
+
+                quote_item = None
+                if use_wechat_quote:
+                    raw_item = event.raw_item
+                    if raw_item is not None and callable(
+                        getattr(raw_item, "quote", None)
+                    ):
+                        quote_item = raw_item
+
+                quote_text_candidate = ""
+                if use_text_quote or (use_wechat_quote and reply_quote_fallback):
+                    quote_text_candidate = build_reply_quote_text(
+                        event, user_text, bot_cfg
+                    )
+
+                reply_quote_text = quote_text_candidate if use_text_quote else ""
+                quote_fallback_text: Optional[str] = None
+                if use_wechat_quote:
+                    if quote_item is None:
+                        if reply_quote_fallback:
+                            reply_quote_text = quote_text_candidate
+                    elif reply_quote_fallback:
+                        if quote_text_candidate:
+                            quote_fallback_text = sanitize_reply_text(
+                                quote_text_candidate,
+                                emoji_policy,
+                                emoji_replacements,
+                            )
+                        else:
+                            quote_fallback_text = ""
+
+                reply_quote_prefix = reply_quote_text
+
+                def apply_reply_quote_prefix(text: str) -> str:
+                    nonlocal reply_quote_prefix
+                    if reply_quote_prefix:
+                        text = f"{reply_quote_prefix}{text}"
+                        reply_quote_prefix = ""
+                    return text
+
+                quote_pending = quote_item
+
+                async def send_reply_text(
+                    text: str, chunk_size: int
+                ) -> Tuple[bool, Optional[str]]:
+                    nonlocal quote_pending
+                    quote_current = quote_pending
+                    ok, err_msg = await send_reply_chunks(
+                        wx,
+                        event.chat_name,
+                        text,
+                        bot_cfg,
+                        chunk_size,
+                        reply_chunk_delay_sec,
+                        min_reply_interval,
+                        last_reply_ts,
+                        wx_lock,
+                        quote_item=quote_current,
+                        quote_timeout_sec=reply_quote_timeout_sec,
+                        quote_fallback_text=quote_fallback_text,
+                    )
+                    if quote_current is not None:
+                        quote_pending = None
+                    return ok, err_msg
                 reply_tokens_text = ""
 
                 used_stream = False
@@ -1445,21 +1595,17 @@ async def main() -> None:
                                                 random_delay_range
                                             )
                                             first_send = False
+                                        send_text = apply_reply_quote_prefix(
+                                            pending_chunk
+                                        )
                                         sanitized = sanitize_reply_text(
-                                            pending_chunk,
+                                            send_text,
                                             emoji_policy,
                                             emoji_replacements,
                                         )
-                                        ok, err_msg = await send_reply_chunks(
-                                            wx,
-                                            event.chat_name,
+                                        ok, err_msg = await send_reply_text(
                                             sanitized,
-                                            bot_cfg,
                                             stream_chunk_max_chars,
-                                            reply_chunk_delay_sec,
-                                            min_reply_interval,
-                                            last_reply_ts,
-                                            wx_lock,
                                         )
                                         stream_sent_any = stream_sent_any or ok
                                         if not ok:
@@ -1476,19 +1622,13 @@ async def main() -> None:
                                             random_delay_range
                                         )
                                         first_send = False
+                                    send_text = apply_reply_quote_prefix(buffer)
                                     sanitized = sanitize_reply_text(
-                                        buffer, emoji_policy, emoji_replacements
+                                        send_text, emoji_policy, emoji_replacements
                                     )
-                                    ok, err_msg = await send_reply_chunks(
-                                        wx,
-                                        event.chat_name,
+                                    ok, err_msg = await send_reply_text(
                                         sanitized,
-                                        bot_cfg,
                                         stream_chunk_max_chars,
-                                        reply_chunk_delay_sec,
-                                        min_reply_interval,
-                                        last_reply_ts,
-                                        wx_lock,
                                     )
                                     stream_sent_any = stream_sent_any or ok
                                     if not ok:
@@ -1509,21 +1649,17 @@ async def main() -> None:
                                                 random_delay_range
                                             )
                                             first_send = False
+                                        send_text = apply_reply_quote_prefix(
+                                            pending_chunk
+                                        )
                                         sanitized = sanitize_reply_text(
-                                            pending_chunk,
+                                            send_text,
                                             emoji_policy,
                                             emoji_replacements,
                                         )
-                                        ok, err_msg = await send_reply_chunks(
-                                            wx,
-                                            event.chat_name,
+                                        ok, err_msg = await send_reply_text(
                                             sanitized,
-                                            bot_cfg,
                                             stream_chunk_max_chars,
-                                            reply_chunk_delay_sec,
-                                            min_reply_interval,
-                                            last_reply_ts,
-                                            wx_lock,
                                         )
                                         stream_sent_any = stream_sent_any or ok
                                         if not ok:
@@ -1540,19 +1676,13 @@ async def main() -> None:
                                             random_delay_range
                                         )
                                         first_send = False
+                                    send_text = apply_reply_quote_prefix(tail)
                                     sanitized_tail = sanitize_reply_text(
-                                        tail, emoji_policy, emoji_replacements
+                                        send_text, emoji_policy, emoji_replacements
                                     )
-                                    ok, err_msg = await send_reply_chunks(
-                                        wx,
-                                        event.chat_name,
+                                    ok, err_msg = await send_reply_text(
                                         sanitized_tail,
-                                        bot_cfg,
                                         stream_chunk_max_chars,
-                                        reply_chunk_delay_sec,
-                                        min_reply_interval,
-                                        last_reply_ts,
-                                        wx_lock,
                                     )
                                     stream_sent_any = stream_sent_any or ok
                                     if not ok:
@@ -1574,21 +1704,17 @@ async def main() -> None:
                                             random_delay_range
                                         )
                                         first_send = False
+                                    send_text = apply_reply_quote_prefix(
+                                        final_text
+                                    )
                                     sanitized_final = sanitize_reply_text(
-                                        final_text,
+                                        send_text,
                                         emoji_policy,
                                         emoji_replacements,
                                     )
-                                    ok, err_msg = await send_reply_chunks(
-                                        wx,
-                                        event.chat_name,
+                                    ok, err_msg = await send_reply_text(
                                         sanitized_final,
-                                        bot_cfg,
                                         stream_chunk_max_chars,
-                                        reply_chunk_delay_sec,
-                                        min_reply_interval,
-                                        last_reply_ts,
-                                        wx_lock,
                                     )
                                     stream_sent_any = stream_sent_any or ok
                                     if not ok:
@@ -1599,7 +1725,7 @@ async def main() -> None:
                                         )
                                         return
                             reply_preview = sanitize_reply_text(
-                                f"{full_reply}{reply_suffix}",
+                                f"{reply_quote_text}{full_reply}{reply_suffix}",
                                 emoji_policy,
                                 emoji_replacements,
                             )
@@ -1618,24 +1744,17 @@ async def main() -> None:
                         return
 
                     reply_tokens_text = reply
-                    reply_text = (
-                        f"{reply}{reply_suffix}" if reply_suffix else reply
-                    )
+                    reply_text = f"{reply_quote_text}{reply}"
+                    if reply_suffix:
+                        reply_text = f"{reply_text}{reply_suffix}"
                     full_reply = sanitize_reply_text(
                         reply_text, emoji_policy, emoji_replacements
                     )
                     reply_preview = full_reply
                     await maybe_sleep_random(random_delay_range)
-                    ok, err_msg = await send_reply_chunks(
-                        wx,
-                        event.chat_name,
+                    ok, err_msg = await send_reply_text(
                         full_reply,
-                        bot_cfg,
                         reply_chunk_size,
-                        reply_chunk_delay_sec,
-                        min_reply_interval,
-                        last_reply_ts,
-                        wx_lock,
                     )
                     if not ok:
                         logging.error(
@@ -2061,6 +2180,9 @@ async def main() -> None:
 
     if hasattr(ai_client, "close"):
         await ai_client.close()
+
+    if memory:
+        memory.close()
 
 
 if __name__ == "__main__":

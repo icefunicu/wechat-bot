@@ -24,7 +24,7 @@ class MemoryManager:
         if db_dir:
             os.makedirs(db_dir, exist_ok=True)
         self._lock = threading.Lock()
-        self._conn = sqlite3.connect(self.db_path)
+        self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._ttl_sec = self._normalize_ttl(ttl_sec)
         self._cleanup_interval_sec = self._normalize_interval(cleanup_interval_sec)

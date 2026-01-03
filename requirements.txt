@@ -1,2 +1,2 @@
-httpx
+httpx>=0.24.0,<1.0
 wxauto @ git+https://github.com/cluic/wxauto.git
