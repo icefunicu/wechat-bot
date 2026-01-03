@@ -1,10 +1,10 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `main.py`: entry point; connects to WeChat via `wxauto`, polls messages, filters/normalizes events, and sends replies. Handles config hot-reload, optional `ai_client.py` reload, reconnect backoff, and emoji sanitization.
-- `ai_client.py`: OpenAI-compatible `/chat/completions` client using `httpx` (async); keeps per-chat in-memory history with TTL/size caps and retry backoff.
-- `memory.py`: SQLite-backed chat history and user profile storage (nickname, relationship, personality, facts, emotion history).
-- `emotion.py`: Emotion detection module supporting keyword and AI modes; time-awareness, conversation style analysis, and relationship evolution.
+- `main.py`: entry point; connects to WeChat via `wxauto`, polls messages, filters/normalizes events, and sends replies. Handles config hot-reload, optional `ai_client.py` reload, reconnect backoff, and emoji sanitization. Uses pre-compiled frozensets for message type detection.
+- `ai_client.py`: OpenAI-compatible `/chat/completions` client using `httpx` (async); keeps per-chat in-memory history with TTL/size caps and retry backoff. Includes LRU-cached token estimation.
+- `memory.py`: SQLite-backed chat history and user profile storage (nickname, relationship, personality, facts, emotion history). Supports context manager protocol (`with MemoryManager() as ...`).
+- `emotion.py`: Emotion detection module supporting keyword and AI modes; time-awareness, conversation style analysis, and relationship evolution. Uses `@dataclass(slots=True)` for memory efficiency.
 - `config.py`: runtime configuration (`CONFIG`/`get_config()`/`config`) for API presets, bot behavior, and logging.
 - `requirements.txt`: runtime dependencies (includes `wxauto` from GitHub).
 - `wxauto_logs/`: runtime logs (generated, rotating).
@@ -38,6 +38,12 @@
 - **User profile management**: nickname, relationship, personality, and context facts storage.
 - **Emotion detection**: keyword-based and AI-based emotion analysis with configurable modes.
 - **Humanization**: time-aware prompts, conversation style adaptation, emotion trend analysis, and relationship evolution.
+
+## Performance Optimizations
+- `@dataclass(slots=True)` on `EmotionResult` for reduced memory footprint.
+- `@lru_cache(maxsize=1024)` on token estimation to avoid redundant computation.
+- `frozenset` for O(1) membership checks (emotion keywords, message type markers, allowed roles).
+- Context manager support in `MemoryManager` for automatic resource cleanup.
 
 ## Coding Style & Naming Conventions
 - Python, 4-space indentation; keep type hints and docstrings consistent with existing modules.

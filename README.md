@@ -53,12 +53,21 @@ python main.py
 
 - `main.py`：入口与主循环，连接微信、轮询消息、过滤与归一化、发送回复、热重载与重连
 - `ai_client.py`：OpenAI 兼容 `/chat/completions` 客户端（httpx 异步 + 流式）
-- `memory.py`：SQLite 记忆库（按会话存储用户/助手消息，用户画像管理）
-- `emotion.py`：情感检测模块（关键词/AI 模式，时间感知，对话风格分析）
+- `memory.py`：SQLite 记忆库（按会话存储用户/助手消息，用户画像管理，支持上下文管理器）
+- `emotion.py`：情感检测模块（关键词/AI 模式，时间感知，对话风格分析，使用 slots 优化）
 - `config.py`：运行时配置（API 预设、机器人行为、日志）
 - `api_keys.py`：可选密钥文件（已在 `.gitignore` 中）
 - `requirements.txt`：依赖清单
 - `wxauto_logs/`：运行日志目录（自动创建）
+
+## 性能优化
+
+本项目采用了多项性能优化措施：
+
+- **内存优化**：`EmotionResult` 使用 `@dataclass(slots=True)` 减少内存占用
+- **LRU 缓存**：Token 估算使用 `@lru_cache(maxsize=1024)` 避免重复计算
+- **快速查找**：使用 `frozenset` 进行 O(1) 复杂度的成员检查（情绪关键词、消息类型等）
+- **上下文管理器**：`MemoryManager` 支持 `with` 语句自动关闭数据库连接
 
 ## 配置详解
 
