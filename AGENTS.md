@@ -1,14 +1,22 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `main.py`: entry point; connects to WeChat via `wxauto`, polls messages, filters/normalizes events, and sends replies. Handles config hot-reload, optional `ai_client.py` reload, reconnect backoff, and emoji sanitization. Uses pre-compiled frozensets for message type detection.
-- `ai_client.py`: OpenAI-compatible `/chat/completions` client using `httpx` (async); keeps per-chat in-memory history with TTL/size caps and retry backoff. Includes LRU-cached token estimation.
-- `memory.py`: SQLite-backed chat history and user profile storage (nickname, relationship, personality, facts, emotion history). Supports context manager protocol (`with MemoryManager() as ...`).
-- `emotion.py`: Emotion detection module supporting keyword and AI modes; time-awareness, conversation style analysis, and relationship evolution. Uses `@dataclass(slots=True)` for memory efficiency.
+- `main.py`: entry point; connects to WeChat via `wxauto`, polls messages, filters/normalizes events, and sends replies. Handles config hot-reload, reconnect backoff, and emoji sanitization.
 - `config.py`: runtime configuration (`CONFIG`/`get_config()`/`config`) for API presets, bot behavior, and logging.
+- `core/`: core functionality module
+  - `ai_client.py`: OpenAI-compatible `/chat/completions` client using `httpx` (async); per-chat history with TTL/size caps and retry backoff. Includes LRU-cached token estimation.
+  - `memory.py`: SQLite-backed chat history and user profile storage. Supports context manager protocol.
+  - `emotion.py`: Emotion detection module supporting keyword and AI modes; time-awareness, conversation style analysis. Uses `@dataclass(slots=True)`.
+- `export/`: chat export module
+  - `cli.py`: command-line entry point for CSV export.
+  - `csv_exporter.py`: CSV export implementation (WeChatMsg-compatible format).
+- `prompts/`: prompt management module
+  - `generator.py`: analyzes exported chat records (CSV) and generates personalized system prompts for top N contacts.
+  - `overrides.py`: loads and manages per-contact prompt overrides from JSON.
+- `wxManager/`: WeChatMsg database interface for reading decrypted WeChat databases.
 - `requirements.txt`: runtime dependencies (includes `wxauto` from GitHub).
 - `wxauto_logs/`: runtime logs (generated, rotating).
-- `tests/`: unit tests for helper logic (no WeChat/API calls).
+- `chat_exports/`: WeChat chat history exports (CSV format, gitignored).
 - `__pycache__/`, `.venv/`, `.idea/`: local artifacts; keep out of commits.
 
 ## Build, Test, and Development Commands
@@ -38,12 +46,20 @@
 - **User profile management**: nickname, relationship, personality, and context facts storage.
 - **Emotion detection**: keyword-based and AI-based emotion analysis with configurable modes.
 - **Humanization**: time-aware prompts, conversation style adaptation, emotion trend analysis, and relationship evolution.
+- **Personalized prompt generation**: analyze exported chat history to generate per-contact system prompts that mimic user's conversation style.
 
 ## Performance Optimizations
 - `@dataclass(slots=True)` on `EmotionResult` for reduced memory footprint.
 - `@lru_cache(maxsize=1024)` on token estimation to avoid redundant computation.
 - `frozenset` for O(1) membership checks (emotion keywords, message type markers, allowed roles).
 - Context manager support in `MemoryManager` for automatic resource cleanup.
+
+## Data Workflow
+1. **Export chat history**: Use [WeChatMsg](https://github.com/LC044/WeChatMsg) to export WeChat chats to CSV format.
+2. **Organize files**: Place exports in `chat_exports/聊天记录/<ContactName(wxid)>/<ContactName>.csv`.
+3. **Generate prompts**: Run `python prompt_generator.py` to analyze chats and generate personalized prompts.
+4. **Review output**: Check `chat_exports/top10_prompts_summary.json` for generated prompts.
+5. **Integrate**: Copy prompts to `config.py`'s `system_prompt_overrides` or use `prompt_overrides.py`.
 
 ## Coding Style & Naming Conventions
 - Python, 4-space indentation; keep type hints and docstrings consistent with existing modules.
@@ -62,3 +78,5 @@
 ## Security & Configuration Tips
 - `config.py` contains API keys; keep placeholders in version control and avoid sharing real secrets.
 - Logs in `wxauto_logs/` may include message content; treat them as sensitive and do not commit them.
+- `chat_exports/` contains sensitive chat history; keep it gitignored and do not share.
+

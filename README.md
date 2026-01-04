@@ -52,22 +52,43 @@ python main.py
 ## 项目结构
 
 - `main.py`：入口与主循环，连接微信、轮询消息、过滤与归一化、发送回复、热重载与重连
-- `ai_client.py`：OpenAI 兼容 `/chat/completions` 客户端（httpx 异步 + 流式）
-- `memory.py`：SQLite 记忆库（按会话存储用户/助手消息，用户画像管理，支持上下文管理器）
-- `emotion.py`：情感检测模块（关键词/AI 模式，时间感知，对话风格分析，使用 slots 优化）
 - `config.py`：运行时配置（API 预设、机器人行为、日志）
 - `api_keys.py`：可选密钥文件（已在 `.gitignore` 中）
 - `requirements.txt`：依赖清单
+- `core/`：核心功能模块（`ai_client.py`、`memory.py`、`emotion.py`）
+- `export/`：聊天导出模块（`cli.py`、`csv_exporter.py`）
+- `prompts/`：Prompt 管理模块（`generator.py`、`overrides.py`）
+- `wxManager/`：WeChatMsg 数据库接口
+- `chat_exports/`：导出数据目录（gitignored）
 - `wxauto_logs/`：运行日志目录（自动创建）
 
 ## 性能优化
 
 本项目采用了多项性能优化措施：
 
+### 内存与计算优化
 - **内存优化**：`EmotionResult` 使用 `@dataclass(slots=True)` 减少内存占用
 - **LRU 缓存**：Token 估算使用 `@lru_cache(maxsize=1024)` 避免重复计算
 - **快速查找**：使用 `frozenset` 进行 O(1) 复杂度的成员检查（情绪关键词、消息类型等）
 - **上下文管理器**：`MemoryManager` 支持 `with` 语句自动关闭数据库连接
+
+### 数据库优化
+- **多索引加速**：`chat_history` 表添加 `wx_id_id` 和 `created_at` 索引
+- **WAL 模式**：启用 SQLite WAL 日志模式提升并发读写性能
+- **内存映射 I/O**：启用 256MB mmap 加速数据读取
+
+### 情绪检测优化
+- **扩展词库**：包含 150+ 情绪关键词，涵盖网络用语（yyds、xswl、emo 等）
+- **预编译模式**：关键词集合预转换为 `frozenset` 加速匹配
+
+### Emoji 处理优化
+- **扩展映射表**：100+ emoji 到微信表情的映射
+- **翻译表加速**：使用 `str.maketrans` 实现批量字符替换
+
+### AI 客户端优化
+- **连接池复用**：共享 HTTP 客户端实例，最大连接数 20
+- **请求追踪**：唯一请求 ID 便于调试和日志关联
+- **请求统计**：内置成功/失败/去重计数器
 
 ## 配置详解
 
@@ -193,6 +214,143 @@ API_KEYS = {
 5) 写入记忆库 → 记录日志 → 空闲/异常触发重连  
 6) 定时热重载配置，必要时重新选择模型预设
 
+## 聊天记录导出
+
+本项目支持分析微信聊天记录生成个性化 Prompt。需要先将聊天记录从微信导出为 CSV 格式。
+
+### 内置导出脚本（WeChatMsg 数据库）
+
+本项目已内置 CSV 导出脚本，可直接从**解密后的** WeChatMsg 数据库导出，格式与原 WeChatMsg 保持一致：
+
+```bash
+python export_chat_csv.py --db-dir "E:\wxid_xxx\Msg" --db-version 4 --output-dir chat_exports
+```
+
+常用参数：
+
+- `--contact`：按备注/昵称/wxid 精确匹配导出（可重复传入）
+- `--include-chatrooms`：包含群聊导出
+- `--start`/`--end`：导出时间范围（需成对提供）
+
+### 推荐工具：WeChatMsg
+
+[WeChatMsg](https://github.com/LC044/WeChatMsg) 是一个开源的微信聊天记录导出工具，支持：
+
+- ✅ 导出为 CSV / JSON / HTML 格式
+- ✅ 支持微信 PC 3.9.x 版本
+- ✅ 支持导出图片、语音、视频等附件
+- ✅ 数据分析与可视化
+
+### 导出步骤
+
+1. **下载 WeChatMsg**：从 [GitHub Releases](https://github.com/LC044/WeChatMsg/releases) 下载最新版本
+2. **运行工具**：解压后运行 `WeChatMsg.exe`
+3. **登录微信**：确保微信 PC 3.9.x 已登录
+4. **选择联系人**：在工具中选择要导出的联系人
+5. **导出 CSV**：选择「导出为 CSV」，保存到 `chat_exports/聊天记录/` 目录
+
+### 目录结构要求
+
+```
+chat_exports/
+├── 聊天记录/
+│   ├── 联系人A(wxid_xxx)/
+│   │   └── 联系人A.csv
+│   ├── 联系人B(wxid_yyy)/
+│   │   └── 联系人B.csv
+│   └── ...
+└── top10_prompts_summary.json  # 生成的个性化 Prompt 汇总
+```
+
+> ⚠️ **注意**：`chat_exports/` 目录包含敏感的聊天记录，已加入 `.gitignore`，请勿提交到版本库。
+
+## 个性化 Prompt 生成
+
+使用 `prompt_generator.py` 可以分析聊天记录并为每个联系人生成独特的系统提示词，让 AI 回复更贴近你的真实聊天风格。
+
+### 功能特性
+
+- 📊 自动统计每个联系人的消息数量
+- 🔝 找出聊天最多的 Top N 联系人（默认 10）
+- 🤖 调用 AI 分析聊天风格并生成个性化 Prompt
+- 💾 输出结果保存为 JSON 格式
+
+### 使用方法
+
+```bash
+# 确保已配置 API 密钥
+python prompt_generator.py
+```
+
+### 工作原理
+
+1. 扫描 `chat_exports/聊天记录/` 下的所有联系人目录
+2. 解析 CSV 文件，统计文本消息数量
+3. 筛选出 Top N 联系人（排除系统账号）
+4. 对每个联系人，取最近的聊天记录发送给 AI 分析
+5. AI 生成个性化的 `system_prompt`，包含：
+   - 称呼方式、用词偏好、句子风格
+   - 表情习惯、关系亲疏
+   - 场景化回复建议
+6. 结果保存到 `chat_exports/top10_prompts_summary.json`
+
+### 集成到机器人
+
+生成后，将 Prompt 复制到 `config.py` 的 `system_prompt_overrides` 字典中：
+
+```python
+"system_prompt_overrides": {
+    "联系人A": "生成的 Prompt 内容...",
+    "联系人B": "生成的 Prompt 内容...",
+},
+```
+
+或导入独立的 `prompt_overrides.py`：
+
+```python
+from prompt_overrides import PROMPT_OVERRIDES
+# 然后在 config.py 中使用 PROMPT_OVERRIDES
+```
+
+## 数据流程
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              数据处理流程                                     │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+  ┌──────────────┐      WeChatMsg      ┌──────────────┐
+  │  微信聊天记录  │  ───────────────▶  │   CSV 文件    │
+  └──────────────┘       导出          └──────────────┘
+                                              │
+                                              ▼
+                                    ┌──────────────────┐
+                                    │ prompt_generator │
+                                    │      .py         │
+                                    └──────────────────┘
+                                              │
+                              ┌───────────────┴───────────────┐
+                              ▼                               ▼
+                    ┌────────────────┐              ┌────────────────┐
+                    │ top10_prompts  │              │ prompt_overrides│
+                    │ _summary.json  │              │      .py       │
+                    └────────────────┘              └────────────────┘
+                              │                               │
+                              └───────────────┬───────────────┘
+                                              ▼
+                                    ┌──────────────────┐
+                                    │    config.py     │
+                                    │ system_prompt_   │
+                                    │   overrides      │
+                                    └──────────────────┘
+                                              │
+                                              ▼
+                                    ┌──────────────────┐
+                                    │     main.py      │
+                                    │   AI 自动回复     │
+                                    └──────────────────┘
+```
+
 ## 运行产物与注意事项
 
 - 运行后会生成 `wxauto_logs/` 日志目录与 `chat_history.db` 记忆库
@@ -213,6 +371,9 @@ API_KEYS = {
 4) **语音转文字不可用**  
 需要微信客户端支持语音转文字；可关闭 `voice_to_text` 或设置失败回退回复。
 
+5) **Prompt 生成失败**  
+确认 `chat_exports/聊天记录/` 目录结构正确，CSV 文件编码为 UTF-8。
+
 ## 测试
 
 当前仓库未提供测试用例。如你新增 `tests/`，可使用：
@@ -223,3 +384,4 @@ python -m unittest discover -s tests
 ## 免责声明
 
 自动化控制微信存在账号风险，请自行评估并合理使用。
+

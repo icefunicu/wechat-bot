@@ -131,6 +131,9 @@ class AIClient:
         history_ttl_sec (float | None): 会话历史过期时间
     """
 
+    # 类级别的请求计数器（用于生成唯一请求 ID）
+    _request_counter: int = 0
+    _request_counter_lock = asyncio.Lock()
 
     def __init__(
         self,
@@ -177,6 +180,24 @@ class AIClient:
         self._histories: "OrderedDict[str, Deque[dict]]" = OrderedDict()
         self._history_timestamps: Dict[str, float] = {}
         self._chat_locks: Dict[str, asyncio.Lock] = {}
+        
+        # 请求去重：存储正在处理的请求 {(chat_id, user_text_hash): Future}
+        self._pending_requests: Dict[Tuple[str, int], asyncio.Future] = {}
+        
+        # 请求统计
+        self._stats = {
+            "total_requests": 0,
+            "successful_requests": 0,
+            "failed_requests": 0,
+            "deduplicated_requests": 0,
+        }
+
+    @classmethod
+    async def _next_request_id(cls) -> str:
+        """生成下一个请求 ID（线程安全）。"""
+        async with cls._request_counter_lock:
+            cls._request_counter += 1
+            return f"req-{cls._request_counter:06d}"
 
     def _build_headers(self) -> dict:
         headers = {"Content-Type": "application/json"}

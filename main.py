@@ -40,9 +40,9 @@ from dataclasses import dataclass
 from logging.handlers import RotatingFileHandler
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-import ai_client as ai_module
-from memory import MemoryManager
-from emotion import (
+from core import ai_client as ai_module
+from core.memory import MemoryManager
+from core.emotion import (
     EmotionResult,
     detect_emotion_keywords,
     get_emotion_response_guide,
@@ -80,7 +80,10 @@ NON_TEXT_TYPE_MARKERS: frozenset = frozenset((
     "emoji", "system", "location", "link", "merge", "card", "note", "tickle",
 ))
 VOICE_TYPE_MARKERS: frozenset = frozenset(("voice", "audio"))
+
+# emoji 到微信表情的映射（扩展版）
 EMOJI_REPLACEMENTS = {
+    # 笑脸类
     "\U0001F602": "[笑哭]",
     "\U0001F923": "[笑哭]",
     "\U0001F60A": "[微笑]",
@@ -91,19 +94,103 @@ EMOJI_REPLACEMENTS = {
     "\U0001F609": "[眨眼]",
     "\U0001F60E": "[酷]",
     "\U0001F60D": "[色]",
+    "\U0001F618": "[飞吻]",
+    "\U0001F617": "[亲亲]",
+    "\U0001F619": "[亲亲]",
+    "\U0001F61A": "[亲亲]",
+    "\U0001F642": "[微笑]",
+    "\U0001F643": "[微笑]",
+    "\U0001F970": "[爱心]",
+    "\U0001F60B": "[馋]",
+    "\U0001F61B": "[吐舌]",
+    "\U0001F61C": "[坏笑]",
+    "\U0001F61D": "[吐舌]",
+    "\U0001F911": "[财迷]",
+    "\U0001F917": "[拥抱]",
+    "\U0001F929": "[惊喜]",
+    "\U0001F973": "[派对]",
+    # 悲伤类
     "\U0001F62D": "[大哭]",
     "\U0001F622": "[流泪]",
+    "\U0001F62A": "[困]",
+    "\U0001F630": "[冷汗]",
+    "\U0001F625": "[难过]",
+    "\U0001F613": "[汗]",
+    "\U0001F61E": "[失望]",
+    "\U0001F629": "[疲惫]",
+    "\U0001F62B": "[累]",
+    # 愤怒/惊讶类
     "\U0001F620": "[发怒]",
     "\U0001F621": "[发怒]",
+    "\U0001F624": "[哼]",
+    "\U0001F92C": "[爆炸]",
+    "\U0001F631": "[惊恐]",
+    "\U0001F632": "[惊讶]",
+    "\U0001F633": "[脸红]",
+    "\U0001F628": "[害怕]",
+    "\U0001F627": "[担心]",
+    "\U0001F626": "[难过]",
+    # 表情类
     "\U0001F914": "[疑问]",
     "\U0001F644": "[白眼]",
+    "\U0001F612": "[鄙视]",
+    "\U0001F610": "[无语]",
+    "\U0001F611": "[无语]",
+    "\U0001F636": "[沉默]",
+    "\U0001F60F": "[坏笑]",
+    "\U0001F4A4": "[睡]",
+    "\U0001F634": "[睡]",
+    "\U0001F637": "[口罩]",
+    "\U0001F912": "[生病]",
+    "\U0001F915": "[受伤]",
+    # 手势类
     "\U0001F44D": "[强]",
     "\U0001F44E": "[弱]",
     "\U0001F64F": "[合十]",
     "\U0001F4AA": "[拳头]",
     "\U0001F44F": "[鼓掌]",
+    "\U0001F44B": "[挥手]",
+    "\U0001F44C": "[OK]",
+    "\U0001F44A": "[拳头]",
+    "\U0001F91D": "[握手]",
+    "\U0001F91E": "[祝福]",
+    "\U0001F918": "[摇滚]",
+    "\U0001F919": "[电话]",
+    "\U0001F91F": "[爱你]",
+    "\u270C\uFE0F": "[胜利]",
+    "\U0001F596": "[举手]",
+    # 其他常用
     "\U0001F525": "[火]",
+    "\U0001F4A5": "[爆炸]",
+    "\U0001F4AF": "[100]",
+    "\U00002764": "[爱心]",
+    "\U0001F495": "[心心]",
+    "\U0001F494": "[心碎]",
+    "\U0001F496": "[爱心]",
+    "\U0001F497": "[爱心]",
+    "\U0001F498": "[爱心]",
+    "\U0001F499": "[爱心]",
+    "\U0001F49A": "[爱心]",
+    "\U0001F49B": "[爱心]",
+    "\U0001F49C": "[爱心]",
+    "\U0001F31F": "[星星]",
+    "\U00002B50": "[星星]",
+    "\U0001F389": "[庆祝]",
+    "\U0001F38A": "[礼花]",
+    "\U0001F4A9": "[便便]",
+    "\U0001F47B": "[鬼]",
+    "\U0001F480": "[骷髅]",
+    "\U0001F47F": "[恶魔]",
+    "\U0001F63A": "[猫笑]",
+    "\U0001F63B": "[猫爱]",
+    "\U0001F63F": "[猫哭]",
 }
+
+# 为 str.translate 准备翻译表（单字符 emoji 快速替换）
+_EMOJI_TRANS_TABLE = str.maketrans({
+    ord(k): v for k, v in EMOJI_REPLACEMENTS.items() if len(k) == 1
+})
+
 EMOJI_PATTERN = re.compile(
     "["
     "\U0001F300-\U0001F5FF"
@@ -1372,7 +1459,7 @@ async def main() -> None:
             cleanup_interval_sec=memory_cleanup_interval_sec,
         )
     except Exception as exc:
-        logging.warning("memory init failed: %s", exc)
+        logging.warning("记忆模块初始化失败：%s", exc)
     reconnect_policy = get_reconnect_policy(bot_cfg)
     keepalive_idle_sec = as_float(
         bot_cfg.get("keepalive_idle_sec", 180.0), 180.0, min_value=0.0
@@ -1570,7 +1657,7 @@ async def main() -> None:
                     try:
                         has_history = memory.has_messages(chat_id)
                     except Exception as exc:
-                        logging.warning("memory check failed: %s", exc)
+                        logging.warning("记忆检查失败：%s", exc)
                         has_history = True
                     if not has_history:
                         try:
@@ -1604,19 +1691,19 @@ async def main() -> None:
                                     event.chat_name,
                                 )
                         except Exception as exc:
-                            logging.warning("memory seed failed: %s", exc)
+                            logging.warning("记忆初始化失败：%s", exc)
                 if memory and user_text.strip():
                     try:
                         memory.add_message(chat_id, "user", user_text)
                     except Exception as exc:
-                        logging.warning("memory write failed: %s", exc)
+                        logging.warning("记忆写入失败：%s", exc)
                 if memory and memory_context_limit > 0:
                     try:
                         recent_context = memory.get_recent_context(
                             chat_id, limit=memory_context_limit
                         )
                     except Exception as exc:
-                        logging.warning("memory load failed: %s", exc)
+                        logging.warning("记忆加载失败：%s", exc)
                 memory_context = recent_context
                 history_context_text = build_history_context_text(recent_context)
 
@@ -1647,7 +1734,7 @@ async def main() -> None:
                             try:
                                 memory.update_emotion(chat_id, current_emotion.emotion)
                             except Exception as exc:
-                                logging.warning("emotion update failed: %s", exc)
+                                logging.warning("情绪更新失败：%s", exc)
 
                         if current_emotion and bot_cfg.get("emotion_log_enabled", False):
                             logging.info(
@@ -1658,7 +1745,7 @@ async def main() -> None:
                                 current_emotion.intensity,
                             )
                     except Exception as exc:
-                        logging.warning("emotion detection failed: %s", exc)
+                        logging.warning("情绪检测失败：%s", exc)
 
                 # ==================== 加载用户画像 ====================
                 user_profile: Optional[Dict[str, Any]] = None
@@ -1676,7 +1763,7 @@ async def main() -> None:
                                 user_profile.get("relationship", "unknown"),
                             )
                     except Exception as exc:
-                        logging.warning("profile load failed: %s", exc)
+                        logging.warning("用户画像加载失败：%s", exc)
 
                 # 构建增强的系统提示词（包含时间感知、风格适配、情绪趋势）
                 system_prompt = resolve_system_prompt(
@@ -1699,7 +1786,7 @@ async def main() -> None:
                                 msg_count,
                             )
                     except Exception as exc:
-                        logging.warning("relationship evolution failed: %s", exc)
+                        logging.warning("关系演进更新失败：%s", exc)
 
                 if "{history_context}" in system_prompt:
                     system_prompt = system_prompt.replace(
@@ -2003,7 +2090,7 @@ async def main() -> None:
                     try:
                         memory.add_message(chat_id, "assistant", reply_tokens_text)
                     except Exception as exc:
-                        logging.warning("memory write failed: %s", exc)
+                        logging.warning("记忆写入失败：%s", exc)
 
                     # ==================== 事实提取（异步后台） ====================
                     if (
@@ -2052,7 +2139,7 @@ async def main() -> None:
                                             new_facts,
                                         )
                         except Exception as exc:
-                            logging.warning("fact extraction failed: %s", exc)
+                            logging.warning("事实提取失败：%s", exc)
                 user_tokens, reply_tokens, exchange_tokens = estimate_exchange_tokens(
                     ai_client, user_text, reply_tokens_text
                 )

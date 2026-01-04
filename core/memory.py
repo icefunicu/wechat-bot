@@ -104,6 +104,7 @@ class MemoryManager:
 
     def _init_db(self) -> None:
         with self._lock:
+            # 聊天历史表
             self._conn.execute(
                 "CREATE TABLE IF NOT EXISTS chat_history ("
                 "id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -113,9 +114,15 @@ class MemoryManager:
                 "created_at INTEGER NOT NULL"
                 ")"
             )
+            # 索引：按 wx_id 和 id 查询（用于获取最近消息）
             self._conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_chat_history_wx_id_id "
                 "ON chat_history (wx_id, id)"
+            )
+            # 索引：按 created_at 查询（用于 TTL 清理，大幅提升清理性能）
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_chat_history_created_at "
+                "ON chat_history (created_at)"
             )
             # 用户画像表
             self._conn.execute(
@@ -132,6 +139,15 @@ class MemoryManager:
                 "updated_at INTEGER NOT NULL"
                 ")"
             )
+            # 索引：按 updated_at 查询（用于活跃用户排序）
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_user_profiles_updated_at "
+                "ON user_profiles (updated_at)"
+            )
+            # 启用 WAL 模式提升并发性能
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            # 启用内存映射 I/O 提升读取性能
+            self._conn.execute("PRAGMA mmap_size=268435456")
             self._conn.commit()
 
     @staticmethod
@@ -273,17 +289,24 @@ class MemoryManager:
 
     def get_user_profile(self, wx_id: str) -> Dict[str, Any]:
         """获取用户画像，如果不存在则返回默认画像"""
+        import copy  # Lazy import to avoid top-level dependency change if not needed elsewhere
+        
         wx_id = str(wx_id).strip()
         if not wx_id:
-            return dict(DEFAULT_USER_PROFILE)
+            return copy.deepcopy(DEFAULT_USER_PROFILE)
         with self._lock:
             row = self._conn.execute(
                 "SELECT * FROM user_profiles WHERE wx_id = ?",
                 (wx_id,),
             ).fetchone()
         if row is None:
-            return dict(DEFAULT_USER_PROFILE)
-        profile = dict(DEFAULT_USER_PROFILE)
+            return copy.deepcopy(DEFAULT_USER_PROFILE)
+            
+        # 这里虽然用了 dict() 浅拷贝，但在后续会重新赋值所有可变字段（preferences 等），
+        # 所以对于数据库中存在的用户，不存在共享引用问题。
+        # 但为了一致性和安全性，建议也使用 deepcopy 或显式构建。
+        profile = copy.deepcopy(DEFAULT_USER_PROFILE)
+        
         profile["nickname"] = row["nickname"] or ""
         profile["relationship"] = row["relationship"] or "unknown"
         profile["personality"] = row["personality"] or ""

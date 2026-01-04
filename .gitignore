@@ -4,3 +4,4 @@ __pycache__/
 .idea/
 wxauto_logs/
 chat_history.db
+chat_exports/

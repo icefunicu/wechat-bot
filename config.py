@@ -433,4 +433,51 @@ def _apply_api_keys(config: dict) -> None:
                 preset["api_key"] = key
 
 
+def _load_prompt_overrides() -> dict:
+    """
+    从 prompt_overrides.py 文件加载个性化 Prompt 覆盖配置。
+
+    该函数尝试导入 prompt_overrides 模块并读取其中的 PROMPT_OVERRIDES 字典。
+    如果导入失败或格式不正确，返回空字典。
+
+    Returns:
+        dict: 包含联系人名称到 system_prompt 的映射
+    """
+    try:
+        from prompt_overrides import PROMPT_OVERRIDES
+    except Exception:
+        return {}
+    if isinstance(PROMPT_OVERRIDES, dict):
+        return PROMPT_OVERRIDES
+    return {}
+
+
+def _apply_prompt_overrides(config: dict) -> None:
+    """
+    将加载的个性化 Prompt 覆盖应用到配置字典中。
+
+    Args:
+        config: 全局配置字典（会被原地修改）
+    """
+    overrides = _load_prompt_overrides()
+    if not overrides:
+        return
+
+    bot_cfg = config.get("bot")
+    if not isinstance(bot_cfg, dict):
+        return
+
+    # 获取现有的 system_prompt_overrides
+    existing = bot_cfg.get("system_prompt_overrides")
+    if not isinstance(existing, dict):
+        existing = {}
+
+    # 合并：prompt_overrides.py 的内容会被现有配置覆盖（优先级更低）
+    # 即手动配置的优先级高于自动生成的
+    merged = {**overrides, **existing}
+    bot_cfg["system_prompt_overrides"] = merged
+
+
 _apply_api_keys(CONFIG)
+_apply_prompt_overrides(CONFIG)
+
