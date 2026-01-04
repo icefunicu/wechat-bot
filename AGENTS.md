@@ -55,9 +55,9 @@
 - Context manager support in `MemoryManager` for automatic resource cleanup.
 
 ## Data Workflow
-1. **Export chat history**: Use [WeChatMsg](https://github.com/LC044/WeChatMsg) to export WeChat chats to CSV format.
+1. **Export chat history**: Use [WeChatMsg](https://github.com/LC044/WeChatMsg) or the built-in CLI (`python -m export.cli`) to export WeChat chats to CSV format.
 2. **Organize files**: Place exports in `chat_exports/聊天记录/<ContactName(wxid)>/<ContactName>.csv`.
-3. **Generate prompts**: Run `python prompt_generator.py` to analyze chats and generate personalized prompts.
+3. **Generate prompts**: Run `python -m prompts.generator` to analyze chats and generate personalized prompts.
 4. **Review output**: Check `chat_exports/top10_prompts_summary.json` for generated prompts.
 5. **Integrate**: Copy prompts to `config.py`'s `system_prompt_overrides` or use `prompt_overrides.py`.
 
