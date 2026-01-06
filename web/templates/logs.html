@@ -6,21 +6,44 @@
 <style>
     .logs-container {
         background: #000;
-        border-radius: 8px;
-        padding: 15px;
-        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        border-radius: 24px;
+        padding: 24px;
+        font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
         font-size: 0.9rem;
-        height: calc(100vh - 140px);
+        height: calc(100vh - 160px);
         overflow-y: auto;
-        border: 1px solid #333;
+        border: 1px solid var(--card-border);
         color: #d4d4d4;
         white-space: pre-wrap;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(10px);
+        box-shadow: inset 0 0 100px rgba(0, 0, 0, 0.8);
+    }
+
+    /* Terminal Scrollbar */
+    .logs-container::-webkit-scrollbar {
+        width: 12px;
+        background: #0f172a;
+        border-top-right-radius: 24px;
+        border-bottom-right-radius: 24px;
+    }
+
+    .logs-container::-webkit-scrollbar-thumb {
+        background: #334155;
+        border: 2px solid #0f172a;
+        border-radius: 6px;
     }
 
     .log-line {
-        padding: 2px 0;
-        line-height: 1.4;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        padding: 4px 12px;
+        line-height: 1.5;
+        border-left: 2px solid transparent;
+        transition: background 0.2s;
+        border-radius: 4px;
+    }
+
+    .log-line:hover {
+        background: rgba(255, 255, 255, 0.05);
     }
 
     .log-line:last-child {
@@ -29,75 +52,115 @@
 
     .log-time {
         color: #569cd6;
-        margin-right: 10px;
+        margin-right: 12px;
+        opacity: 0.7;
     }
 
     .log-level-INFO {
         color: #4ec9b0;
+        border-left-color: #4ec9b0;
     }
 
     .log-level-WARNING {
-        color: #ce9178;
+        color: #f59e0b;
+        border-left-color: #f59e0b;
+        background: rgba(245, 158, 11, 0.05);
     }
 
     .log-level-ERROR {
-        color: #f44747;
+        color: #ef4444;
         font-weight: bold;
+        border-left-color: #ef4444;
+        background: rgba(239, 68, 68, 0.1);
     }
 
     .log-level-DEBUG {
-        color: #808080;
+        color: #64748b;
+        border-left-color: #64748b;
     }
 
     .last-updated {
-        font-size: 0.8rem;
-        color: rgba(255, 255, 255, 0.4);
+        font-size: 0.85rem;
+        color: var(--text-secondary);
         margin-left: 15px;
+        background: rgba(255, 255, 255, 0.05);
+        padding: 4px 12px;
+        border-radius: 12px;
     }
 
     .toolbar {
         display: flex;
         align-items: center;
-        margin-bottom: 15px;
+        gap: 12px;
+        height: 100%;
     }
 
     .auto-scroll-label {
-        margin-left: auto;
         display: flex;
         align-items: center;
         cursor: pointer;
-        padding: 5px 10px;
+        padding: 8px 16px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 12px;
+        font-size: 0.9rem;
+        transition: all 0.2s;
+        user-select: none;
+        border: 1px solid transparent;
+    }
+
+    .auto-scroll-label:hover {
         background: rgba(255, 255, 255, 0.1);
-        border-radius: 4px;
-        font-size: 0.85rem;
+    }
+
+    .auto-scroll-label input:checked+span {
+        color: var(--accent-primary);
     }
 
     .auto-scroll-label input {
         margin-right: 8px;
+        accent-color: var(--accent-primary);
+    }
+
+    .btn-log-action {
+        padding: 8px 16px;
+        font-size: 0.9rem;
     }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="page-header">
-    <div style="display: flex; align-items: baseline;">
+    <div>
         <h1 class="page-title">运行日志</h1>
-        <span id="last-updated" class="last-updated">未同步</span>
+        <div style="display: flex; align-items: center; margin-top: 8px;">
+            <span class="status-dot"
+                style="display: inline-block; width: 8px; height: 8px; background: #22c55e; border-radius: 50%; margin-right: 8px; box-shadow: 0 0 10px #22c55e;"></span>
+            <div class="page-subtitle" style="margin: 0;">实时监控系统输出</div>
+            <span id="last-updated" class="last-updated">等待同步...</span>
+        </div>
     </div>
 
     <div class="toolbar">
         <label class="auto-scroll-label">
-            <input type="checkbox" id="auto-scroll" checked> 自动滚动
+            <input type="checkbox" id="auto-scroll" checked>
+            <span>自动滚动</span>
         </label>
-        <button class="btn btn-refresh" onclick="fetchLogs()"
-            style="margin-left: 10px; padding: 6px 15px; font-size: 0.85rem;">
+        <button class="btn btn-refresh btn-log-action" onclick="fetchLogs()">
             🔄 刷新
+        </button>
+        <button class="btn btn-log-action" onclick="clearLogs()"
+            style="background: rgba(239, 68, 68, 0.1); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.2);">
+            🗑️ 清空
         </button>
     </div>
 </div>
 
 <div class="logs-container" id="logs-view">
-    <div style="color: #666; text-align: center; padding-top: 20px;">正在加载日志...</div>
+    <div
+        style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #334155; user-select: none;">
+        <div style="font-size: 3rem; margin-bottom: 20px;">_</div>
+        <div class="page-subtitle">等待日志流接入...</div>
+    </div>
 </div>
 {% endblock %}
 
@@ -107,8 +170,9 @@
     const autoScrollCheck = document.getElementById('auto-scroll');
     const lastUpdated = document.getElementById('last-updated');
     let isFetching = false;
+    let lineNumber = 0;
 
-    function formatLine(line) {
+    function formatLine(line, index) {
         // Simple highlighting
         let className = 'log-line';
         if (line.includes('ERROR') || line.includes('Exception')) className += ' log-level-ERROR';
@@ -116,7 +180,8 @@
         else if (line.includes('DEBUG')) className += ' log-level-DEBUG';
         else className += ' log-level-INFO';
 
-        return `<div class="${className}">${escapeHtml(line)}</div>`;
+        const num = String(index + 1).padStart(4, ' ');
+        return `<div class="${className}"><span class="log-line-num" style="color:#475569;margin-right:12px;user-select:none;">${num}</span>${escapeHtml(line)}</div>`;
     }
 
     function escapeHtml(text) {
@@ -134,7 +199,7 @@
             const data = await resp.json();
 
             if (data.success) {
-                logsView.innerHTML = data.logs.map(formatLine).join('');
+                logsView.innerHTML = data.logs.map((line, i) => formatLine(line, i)).join('');
                 lastUpdated.textContent = '更新于 ' + new Date().toLocaleTimeString();
 
                 if (autoScrollCheck.checked) {
@@ -148,6 +213,23 @@
             logsView.innerHTML = `<div style="color: #f44747; padding: 10px;">网络请求失败</div>`;
         } finally {
             isFetching = false;
+        }
+    }
+
+    async function clearLogs() {
+        if (!confirm('确定要清空日志吗？此操作不可恢复。')) return;
+        try {
+            const resp = await fetch('/api/logs', { method: 'DELETE' });
+            const data = await resp.json();
+            if (data.success) {
+                logsView.innerHTML = '';
+                showToast('日志已清空', 'success');
+                fetchLogs(); // 重新加载以显示空状态或新日志
+            } else {
+                showToast('清空失败: ' + data.error, 'error');
+            }
+        } catch (e) {
+            showToast('网络请求失败', 'error');
         }
     }
 

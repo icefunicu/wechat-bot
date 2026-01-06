@@ -497,11 +497,33 @@ def _apply_prompt_overrides(config: dict) -> None:
         existing = {}
 
     # 合并：prompt_overrides.py 的内容会被现有配置覆盖（优先级更低）
-    # 即手动配置的优先级高于自动生成的
-    merged = {**overrides, **existing}
-    bot_cfg["system_prompt_overrides"] = merged
 
+# ═══════════════════════════════════════════════════════════════════════════════
+#                               应用配置覆写
+# ═══════════════════════════════════════════════════════════════════════════════
+
+def _apply_config_overrides(config_dict: dict):
+    """加载并应用 JSON 格式的配置覆写"""
+    try:
+        import os
+        import json
+        override_file = os.path.join("data", "config_override.json")
+        if not os.path.exists(override_file):
+            return
+
+        with open(override_file, "r", encoding="utf-8") as f:
+            overrides = json.load(f)
+        
+        # 递归更新配置 (目前仅支持一层字典合并，如需深层合并可扩展)
+        for section, settings in overrides.items():
+            if section in config_dict and isinstance(config_dict[section], dict) and isinstance(settings, dict):
+                config_dict[section].update(settings)
+            else:
+                config_dict[section] = settings
+    except Exception as e:
+        print(f"❌ 加载配置覆写失败: {e}")
 
 _apply_api_keys(CONFIG)
 _apply_prompt_overrides(CONFIG)
+_apply_config_overrides(CONFIG)
 

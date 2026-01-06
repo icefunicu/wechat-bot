@@ -86,36 +86,61 @@ API_KEYS = {
 python run.py start
 ```
 
+### 5️⃣ 启动 Web 控制面板
+
+启动 Web 界面查看机器人状态：
+
+```bash
+python run.py web
+```
+
+- 默认访问地址：`http://localhost:5000`
+- 可通过 `--port` 参数修改端口
+
 ---
 
 ## 项目结构
 
 ```
 wechat-chat/
-├── run.py               # 项目启动入口 (start/check/setup)
+├── run.py               # 🚀 统一入口 (start/web/check/setup)
 ├── requirements.txt     # 依赖清单
-├── app/                 # 核心应用代码
-│   ├── bot.py           # 机器人主类
-│   ├── config.py        # 运行时配置
-│   ├── main.py          # 启动逻辑
-│   ├── core/            # 核心业务 (AI/Memory/Factory)
-│   ├── handlers/        # 消息处理 (Filter/Sender/Convert)
-│   └── utils/           # 通用工具
+├── app/                 # 🤖 核心代码
+│   ├── bot.py           # 机器人主类 (生命周期管理)
+│   ├── config.py        # ⚙️ 运行时配置 (热重载)
+│   ├── main.py          # 异步启动逻辑
+│   ├── core/            # 🧠 核心组件
+│   │   ├── ai_client.py   # 多模型接口适配 (OpenAI/DeepSeek等)
+│   │   ├── memory.py      # 上下文记忆管理 (SQLite + 内存)
+│   │   ├── emotion.py     # 情感计算引擎
+│   │   └── factory.py     # 对象工厂
+│   ├── handlers/        # 📨 消息处理
+│   │   ├── filter.py      # 规则过滤器
+│   │   ├── sender.py      # 消息发送器
+│   │   └── converters.py  # 格式转换
+│   └── utils/           # 🛠️ 通用工具
+│       ├── common.py      # 基础函数
+│       └── message.py     # 消息结构定义
 │
-├── tools/               # 工具箱
-│   ├── chat_exporter/   # 聊天记录导出
-│   ├── prompt_gen/      # Prompt 生成器
-│   └── wx_db/           # 微信数据库接口
+├── web/                 # 🌐 Web 控制面板
+│   ├── app.py           # Flask 后端服务
+│   └── templates/       # 前端控制台模板
 │
-├── data/                # 数据目录 (gitignored)
-│   ├── api_keys.py      # API 密钥
-│   └── chat.db          # 记忆数据库
+├── tools/               # 🧰 实用工具箱
+│   ├── chat_exporter/   # 聊天记录导出 (CLI)
+│   ├── prompt_gen/      # 个性化 Prompt 生成器
+│   └── wx_db/           # 微信本地数据库解密/读取
 │
-├── scripts/             # 维护脚本
-│   ├── check.py         # 环境检测
-│   └── setup_wizard.py  # 设置向导
+├── data/                # 💾 数据持久化 (gitignored)
+│   ├── api_keys.py      # API 密钥配置
+│   └── chat.db          # 记忆数据库文件
 │
-└── wxauto_logs/         # 运行日志目录
+├── scripts/             # 🛠️ 运维脚本
+│   ├── check.py         # 环境自检
+│   └── setup_wizard.py  # 初次配置向导
+│
+└── wxauto_logs/         # 📝 运行日志
+
 ```
 
 ---
@@ -208,6 +233,14 @@ wechat-chat/
 | `emotion_detection_mode` | `keywords` 或 `ai` |
 
 </details>
+
+### 高级配置
+
+> 💡 配置文件 `app/config.py` 支持**热重载**，修改后无需重启即可生效。
+
+- **多模型支持**：在 `CONFIG["api"]["presets"]` 中配置多个服务商（OpenAI, DeepSeek, Doubao 等），机器人会自动探测并使用首个可用服务。
+- **情感计算**：开启 `emotion_detection_enabled` 后，AI 会分析用户情绪并调整回复风格。
+- **记忆注入**：通过 `remember_facts_enabled`，机器人会自动提取对话中的重要事实（如生日、喜好）存入数据库。
 
 ### 日志配置（`CONFIG["logging"]`）
 
@@ -469,6 +502,17 @@ from prompt_overrides import PROMPT_OVERRIDES
 - `chat_exports/聊天记录/` 目录结构正确
 - CSV 文件编码为 UTF-8
 - API 配置正确且可用
+
+</details>
+
+<details>
+<summary><b>❓ 启动 Web 面板提示 Flask 未安装</b></summary>
+
+请确保安装了最新的依赖：
+```bash
+pip install -r requirements.txt
+```
+Web 面板需要 `flask>=2.0.0`。
 
 </details>
 

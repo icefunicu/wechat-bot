@@ -12,7 +12,9 @@ from __future__ import annotations
 import logging
 import sqlite3
 import time
-from dataclasses import dataclass, field
+import json
+import os
+from dataclasses import dataclass, field, asdict
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -37,6 +39,49 @@ class BotState:
     today_tokens: int = 0
     total_tokens: int = 0
     
+    def __post_init__(self):
+        self._state_file = os.path.join("data", "bot_state.json")
+
+    def save(self) -> None:
+        """保存状态到文件"""
+        try:
+            os.makedirs("data", exist_ok=True)
+            data = asdict(self)
+            # 移除非序列化字段 (如果有)
+            if "_state_file" in data:
+                del data["_state_file"]
+            
+            with open(self._state_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logging.error(f"保存状态失败: {e}")
+
+    def load(self) -> None:
+        """从文件加载状态"""
+        if not os.path.exists(self._state_file):
+            return
+        
+        try:
+            with open(self._state_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            
+            # 更新字段
+            for key, value in data.items():
+                if hasattr(self, key):
+                    setattr(self, key, value)
+        except Exception as e:
+            logging.error(f"加载状态失败: {e}")
+            
+    def set_paused(self, paused: bool, reason: str = "") -> None:
+        """设置暂停状态并保存"""
+        self.is_paused = paused
+        self.pause_reason = reason
+        if paused:
+            self.pause_time = time.time()
+        else:
+            self.pause_time = None
+        self.save()
+    
     def reset_daily_stats(self) -> None:
         """重置每日统计"""
         today = datetime.now().strftime("%Y-%m-%d")
@@ -44,6 +89,7 @@ class BotState:
             self.today_date = today
             self.today_replies = 0
             self.today_tokens = 0
+            self.save()  # 保存新日期
     
     def add_reply(self, tokens: int = 0) -> None:
         """记录一次回复"""
@@ -52,6 +98,7 @@ class BotState:
         self.today_replies += 1
         self.today_tokens += tokens
         self.total_tokens += tokens
+        self.save()  # 保存更新
     
     def get_uptime_str(self) -> str:
         """获取运行时长字符串"""
@@ -87,8 +134,10 @@ _bot_state: Optional[BotState] = None
 def get_bot_state() -> BotState:
     """获取机器人状态单例"""
     global _bot_state
+    global _bot_state
     if _bot_state is None:
         _bot_state = BotState()
+        _bot_state.load()  # 尝试加载持久化状态
     return _bot_state
 
 
@@ -165,9 +214,10 @@ def parse_control_command(
                 response="机器人已经是暂停状态",
                 should_reply=True,
             )
-        state.is_paused = True
-        state.pause_time = time.time()
-        state.pause_reason = " ".join(args) if args else "手动暂停"
+        
+        reason = " ".join(args) if args else "手动暂停"
+        state.set_paused(True, reason)
+        
         return ControlCommand(
             command=command,
             args=args,
@@ -185,9 +235,9 @@ def parse_control_command(
                 response="机器人已经在运行中",
                 should_reply=True,
             )
-        state.is_paused = False
-        state.pause_reason = ""
-        state.pause_time = None
+            
+        state.set_paused(False)
+        
         return ControlCommand(
             command=command,
             args=args,

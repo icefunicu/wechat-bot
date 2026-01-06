@@ -50,6 +50,7 @@ from .utils.message import (
     STREAM_PUNCTUATION,
 )
 from .utils.tools import transcribe_voice_message, estimate_exchange_tokens
+from .utils.ipc import IPCManager
 
 
 class WeChatBot:
@@ -62,6 +63,7 @@ class WeChatBot:
         self.memory: Optional[MemoryManager] = None
         self.wx_lock = asyncio.Lock()
         self.sem: Optional[asyncio.Semaphore] = None
+        self.ipc = IPCManager()  # IPC 管理器
 
         self.last_reply_ts: Dict[str, float] = {"ts": 0.0}
         self.pending_tasks: Set[asyncio.Task] = set()
@@ -159,6 +161,12 @@ class WeChatBot:
                     poll_backoff = as_float(self.bot_cfg.get("poll_interval_backoff_factor", 1.2), 1.2)
                     config_reload_sec = as_float(self.bot_cfg.get("config_reload_sec", 2.0), 2.0)
 
+                # IPC 命令检查
+                cmds = self.ipc.get_commands()
+                for cmd in cmds:
+                    await self._execute_ipc_command(wx, cmd)
+
+
                 # 心跳保活检查
                 keepalive_idle_sec = as_float(self.bot_cfg.get("keepalive_idle_sec", 0.0), 0.0)
                 if keepalive_idle_sec > 0 and (now - last_poll_ok_ts > keepalive_idle_sec):
@@ -224,8 +232,27 @@ class WeChatBot:
             self.memory.close()
 
     async def _check_config_reload(self, now: float) -> None:
+        # Check main config file
         new_mtime = get_file_mtime(self.config_path)
+        
+        # Check override file
+        override_path = os.path.join("data", "config_override.json")
+        new_override_mtime = get_file_mtime(override_path)
+        
+        should_reload = False
+        
         if new_mtime and new_mtime != self.config_mtime:
+            should_reload = True
+            self.config_mtime = new_mtime
+            
+        # Also reload if override file changed (or was created/deleted)
+        # Note: get_file_mtime returns None if file doesn't exist
+        last_override_mtime = getattr(self, "override_mtime", None)
+        if new_override_mtime != last_override_mtime:
+            should_reload = True
+            self.override_mtime = new_override_mtime
+
+        if should_reload:
             try:
                 new_config = load_config(self.config_path)
             except Exception as exc:
@@ -234,7 +261,6 @@ class WeChatBot:
 
             self.config = new_config
             self._apply_config()
-            self.config_mtime = new_mtime
             
             # 重新检查 AI 客户端
             if self.bot_cfg.get("reload_ai_client_on_change", True):
@@ -329,6 +355,11 @@ class WeChatBot:
                     "收到消息 | 会话=%s | 发送者=%s | 类型=%s | 内容=%s",
                     event.chat_name, event.sender, event.msg_type, message_log
                 )
+                
+                # IPC 记录
+                recipient = f"group:{event.chat_name}" if event.is_group else "Bot"
+                self.ipc.log_message(event.sender, event.content, "incoming", recipient)
+
 
                 # 2. 控制命令
                 if self.bot_cfg.get("control_commands_enabled", True):
@@ -437,6 +468,10 @@ class WeChatBot:
         # 后处理与发送
         await self._send_smart_reply(wx, event, reply_text)
         
+        # IPC 记录出口消息
+        self.ipc.log_message("Bot", reply_text, "outgoing", event.sender)
+        
+        
         # 更新记忆（助手）
         if self.memory:
             self.memory.add_message(chat_id, "assistant", reply_text)
@@ -489,3 +524,27 @@ class WeChatBot:
                 chunk_size, delay_sec, min_interval,
                 self.last_reply_ts, self.wx_lock
             )
+
+    async def _execute_ipc_command(self, wx: "WeChat", cmd: Dict) -> None:
+        """执行来自 Web 的 IPC 命令"""
+        try:
+            c_type = cmd.get("type")
+            data = cmd.get("data", {})
+            logging.info("执行 IPC 命令: %s", c_type)
+            
+            if c_type == "send_msg":
+                target = data.get("target")
+                content = data.get("content")
+                if target and content:
+                    async with self.wx_lock:
+                        # 这是一个同步调用，但在线程中运行
+                        await asyncio.to_thread(
+                            send_message, wx, target, content, self.bot_cfg
+                        )
+                    self.ipc.log_message("WebUser", content, "outgoing", target)
+            
+            # 其他命令...
+            
+        except Exception as e:
+            logging.error("IPC 命令执行失败: %s", e)
+
