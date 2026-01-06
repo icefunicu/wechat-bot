@@ -54,6 +54,12 @@ def index():
     )
 
 
+@app.route("/logs")
+def page_logs():
+    """日志查看页面"""
+    return render_template("logs.html")
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 #                               API 路由
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -106,6 +112,32 @@ def api_usage():
             "today": daily,
             "success": True,
         })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+
+@app.route("/api/logs")
+def api_logs():
+    """获取最新日志"""
+    try:
+        # 确定日志文件路径 (优先使用 wxauto_logs/bot.log)
+        log_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "wxauto_logs")
+        log_file = os.path.join(log_dir, "bot.log")
+        
+        if not os.path.exists(log_file):
+            return jsonify({"success": False, "error": "Log file not found"})
+        
+        lines_count = int(request.args.get("lines", 100))
+        
+        # 读取最后 N 行
+        logs = []
+        with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+            # 简单的读取所有行取最后 N 行 (对于小日志文件足以)
+            # 生产环境可以使用 deque(f, lines_count) 或 seek 优化
+            all_lines = f.readlines()
+            logs = [line.strip() for line in all_lines[-lines_count:]]
+            
+        return jsonify({"success": True, "logs": logs})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 

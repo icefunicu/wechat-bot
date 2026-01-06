@@ -72,17 +72,28 @@ def build_api_candidates(api_cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
     candidates = []
     
     active_name = str(api_cfg.get("active_preset") or "").strip()
-    presets = api_cfg.get("presets", {})
-    if not isinstance(presets, dict):
-        presets = {}
-
-    # 1. Active Preset
-    if active_name and active_name in presets:
-        candidate = dict(presets[active_name])
-        candidate["name"] = active_name
+    presets_data = api_cfg.get("presets", [])
+    
+    # 统一转换为字典映射 {name: config}
+    presets_map = {}
+    if isinstance(presets_data, list):
+        for p in presets_data:
+            if isinstance(p, dict) and p.get("name"):
+                presets_map[str(p["name"])] = p
+    elif isinstance(presets_data, dict):
+        presets_map = presets_data
+    
+    # 1. Active Preset (只取匹配的一个)
+    if active_name and active_name in presets_map:
+        candidate = dict(presets_map[active_name])
+        # 确保 name 字段存在
+        if "name" not in candidate:
+            candidate["name"] = active_name
         candidates.append(candidate)
 
-    # 2. 根配置 (兼容旧版本)
+    # 2. 根配置 (作为后备或旧版本兼容)
+    # 只有当 api_key 不是占位符时才添加，或者是 root_config 模式
+    # 这里我们宽松一点，只要 base_url 存在就添加，后续由 validate 过滤
     root_candidate = {
         "name": "root_config",
         "base_url": api_cfg.get("base_url"),
@@ -94,17 +105,21 @@ def build_api_candidates(api_cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
         "max_tokens": api_cfg.get("max_tokens"),
         "alias": api_cfg.get("alias"),
     }
-    # 只有当 root config 有效时才加入 (简单判断 base_url)
+    
+    # 防止重复：如果 active_preset 就是 root_config 并不存在(name不同)，所以通常不冲突
+    # 但如果 root config 非常不完整，可以跳过
     if root_candidate.get("base_url"):
         candidates.append(root_candidate)
 
-    # 3. 其他预设
-    for name, cfg in presets.items():
-        if name == active_name:
-            continue
-        candidate = dict(cfg)
-        candidate["name"] = name
-        candidates.append(candidate)
+    # 3. 其他预设 (仅当未指定 active_preset 或需要自动故障转移时)
+    # 目前简单逻辑：优先 active，失败后尝试 root。
+    # 如果未来支持自动故障转移到其他预设，可以在这里添加逻辑
+    # for name, cfg in presets_map.items():
+    #     if name == active_name:
+    #         continue
+    #     candidate = dict(cfg)
+    #     candidate["name"] = name
+    #     candidates.append(candidate)
 
     return candidates
 

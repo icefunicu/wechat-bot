@@ -502,7 +502,7 @@ python -m unittest discover -s tests
 
 <div align="center">
 
-**Made with ❤️ for WeChat Automation**
+**Made By Dxj❤️ for WeChat Automation**
 
 </div>
 </CodeContent>

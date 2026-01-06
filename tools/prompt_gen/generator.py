@@ -25,6 +25,10 @@ from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime
 from pathlib import Path
 
+# 添加项目根目录 to path
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
 # Import project modules
 from app.config import CONFIG, _apply_api_keys
 from app.core.ai_client import AIClient

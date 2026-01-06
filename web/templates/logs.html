@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+
+{% block title %}运行日志 - 微信机器人{% endblock %}
+
+{% block extra_css %}
+<style>
+    .logs-container {
+        background: #000;
+        border-radius: 8px;
+        padding: 15px;
+        font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        font-size: 0.9rem;
+        height: calc(100vh - 140px);
+        overflow-y: auto;
+        border: 1px solid #333;
+        color: #d4d4d4;
+        white-space: pre-wrap;
+    }
+
+    .log-line {
+        padding: 2px 0;
+        line-height: 1.4;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .log-line:last-child {
+        border-bottom: none;
+    }
+
+    .log-time {
+        color: #569cd6;
+        margin-right: 10px;
+    }
+
+    .log-level-INFO {
+        color: #4ec9b0;
+    }
+
+    .log-level-WARNING {
+        color: #ce9178;
+    }
+
+    .log-level-ERROR {
+        color: #f44747;
+        font-weight: bold;
+    }
+
+    .log-level-DEBUG {
+        color: #808080;
+    }
+
+    .last-updated {
+        font-size: 0.8rem;
+        color: rgba(255, 255, 255, 0.4);
+        margin-left: 15px;
+    }
+
+    .toolbar {
+        display: flex;
+        align-items: center;
+        margin-bottom: 15px;
+    }
+
+    .auto-scroll-label {
+        margin-left: auto;
+        display: flex;
+        align-items: center;
+        cursor: pointer;
+        padding: 5px 10px;
+        background: rgba(255, 255, 255, 0.1);
+        border-radius: 4px;
+        font-size: 0.85rem;
+    }
+
+    .auto-scroll-label input {
+        margin-right: 8px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <div style="display: flex; align-items: baseline;">
+        <h1 class="page-title">运行日志</h1>
+        <span id="last-updated" class="last-updated">未同步</span>
+    </div>
+
+    <div class="toolbar">
+        <label class="auto-scroll-label">
+            <input type="checkbox" id="auto-scroll" checked> 自动滚动
+        </label>
+        <button class="btn btn-refresh" onclick="fetchLogs()"
+            style="margin-left: 10px; padding: 6px 15px; font-size: 0.85rem;">
+            🔄 刷新
+        </button>
+    </div>
+</div>
+
+<div class="logs-container" id="logs-view">
+    <div style="color: #666; text-align: center; padding-top: 20px;">正在加载日志...</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const logsView = document.getElementById('logs-view');
+    const autoScrollCheck = document.getElementById('auto-scroll');
+    const lastUpdated = document.getElementById('last-updated');
+    let isFetching = false;
+
+    function formatLine(line) {
+        // Simple highlighting
+        let className = 'log-line';
+        if (line.includes('ERROR') || line.includes('Exception')) className += ' log-level-ERROR';
+        else if (line.includes('WARNING')) className += ' log-level-WARNING';
+        else if (line.includes('DEBUG')) className += ' log-level-DEBUG';
+        else className += ' log-level-INFO';
+
+        return `<div class="${className}">${escapeHtml(line)}</div>`;
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    async function fetchLogs() {
+        if (isFetching) return;
+        isFetching = true;
+
+        try {
+            const resp = await fetch('/api/logs?lines=200');
+            const data = await resp.json();
+
+            if (data.success) {
+                logsView.innerHTML = data.logs.map(formatLine).join('');
+                lastUpdated.textContent = '更新于 ' + new Date().toLocaleTimeString();
+
+                if (autoScrollCheck.checked) {
+                    logsView.scrollTop = logsView.scrollHeight;
+                }
+            } else {
+                logsView.innerHTML = `<div style="color: #f44747; padding: 10px;">读取日志失败: ${data.error}</div>`;
+            }
+        } catch (e) {
+            console.error('Fetch logs error:', e);
+            logsView.innerHTML = `<div style="color: #f44747; padding: 10px;">网络请求失败</div>`;
+        } finally {
+            isFetching = false;
+        }
+    }
+
+    // Initial load
+    fetchLogs();
+
+    // Auto refresh every 3 seconds
+    setInterval(fetchLogs, 3000);
+</script>
+{% endblock %}
