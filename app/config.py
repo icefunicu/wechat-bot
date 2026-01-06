@@ -38,8 +38,8 @@ CONFIG = {
         "alias": '小欧',                              # 模型别名（用于日志和回复后缀）
 
         # ┌─── 请求参数 ───────────────────────────────────────────────────────┐
-        "timeout_sec": 10,                            # 请求超时（秒），上限 10s
-        "max_retries": 2,                             # 失败重试次数，上限 2 次
+        "timeout_sec": 8,                             # 请求超时（秒），降低以加快响应
+        "max_retries": 1,                             # 失败重试次数，减少以加快响应
         "temperature": 0.6,                           # 生成温度（0-2）
         "max_tokens": 512,                            # 最大输出 token 数
         "max_completion_tokens": None,                # Doubao 等模型专用输出上限
@@ -66,7 +66,7 @@ CONFIG = {
                 "alias": '小豆', # 模型别名
                 "base_url": 'https://ark.cn-beijing.volces.com/api/v3',  # 接口地址
                 "api_key": "YOUR_DOUBAO_KEY",  # 接口密钥
-                "model": 'doubao-seed-1-6-251015',  # 模型名称
+                "model": 'doubao-seed-1-8-251228',  # 模型名称
                 "timeout_sec": 10,  # 超时时间（秒）
                 "max_retries": 2,  # 失败重试次数
                 "temperature": 0.6,  # 温度
@@ -265,7 +265,7 @@ CONFIG = {
         "reply_quote_mode": "wechat",                 # 引用方式：wechat（原生）/text/none
         "reply_quote_template": "引用：{content}\n",  # 文本引用模板，支持 {content}/{sender}/{chat}
         "reply_quote_max_chars": 120,                 # 文本引用最大长度，0=不引用
-        "reply_quote_timeout_sec": 3.0,               # 微信原生引用超时（秒）
+        "reply_quote_timeout_sec": 5.0,               # 微信原生引用超时（增加以提高稳定性）
         "reply_quote_fallback_to_text": True,         # 原生引用失败时降级为文本引用
 
         # ┌─── 语音处理 ───────────────────────────────────────────────────────┐
@@ -291,26 +291,33 @@ CONFIG = {
         "history_log_interval_sec": 300.0,            # 历史统计日志间隔（秒）
 
         # ┌─── 轮询与延迟 ─────────────────────────────────────────────────────┐
-        "poll_interval_sec": 0.1,                     # 消息轮询间隔（秒）
-        "poll_interval_min_sec": 0.1,                 # 轮询最短间隔（秒）
-        "poll_interval_max_sec": 1.2,                 # 轮询最长间隔（秒）
+        "poll_interval_sec": 0.05,                    # 消息轮询间隔（秒），加快响应
+        "poll_interval_min_sec": 0.05,                # 轮询最短间隔（秒），加快响应
+        "poll_interval_max_sec": 1.0,                 # 轮询最长间隔（秒）
         "poll_interval_backoff_factor": 1.2,          # 空闲时轮询退避倍数
-        "min_reply_interval_sec": 0.3,                # 最小回复间隔（秒）
-        "random_delay_range_sec": [0.2, 0.8],         # 随机延迟区间（秒），模拟人工
+        "min_reply_interval_sec": 0.1,                # 最小回复间隔（秒），加快响应
+        "random_delay_range_sec": [0.1, 0.3],         # 随机延迟区间（秒），减少等待
 
         # ┌─── 消息合并 ───────────────────────────────────────────────────────┐
-        "merge_user_messages_sec": 0.5,               # 合并等待窗口（秒），0=不合并
-        "merge_user_messages_max_wait_sec": 1.2,      # 合并最长等待（秒），0=不限制
+        "merge_user_messages_sec": 1.5,               # 合并等待窗口（秒），增加以收集更多消息
+        "merge_user_messages_max_wait_sec": 5.0,      # 合并最长等待（秒），增加以收集更多消息
 
         # ┌─── 回复发送 ───────────────────────────────────────────────────────┐
         "reply_chunk_size": 500,                      # 单条消息最大长度（字符）
         "reply_chunk_delay_sec": 0.2,                 # 分段发送间隔（秒）
-        "max_concurrency": 3,                         # 最大并发处理数
+        "max_concurrency": 5,                         # 最大并发处理数，增加以提升吞吐
+
+        # ┌─── 智能分段（更像人类打字）───────────────────────────────────────────┐
+        "natural_split_enabled": True,                # 启用智能分段发送
+        "natural_split_min_chars": 30,                # 每段最少字符数（避免碎片化）
+        "natural_split_max_chars": 120,               # 每段最多字符数
+        "natural_split_max_segments": 3,              # 最大分段数（避免消息轰炸）
+        "natural_split_delay_sec": [0.3, 0.8],        # 段间随机延迟区间（秒），模拟快速打字
 
         # ┌─── 流式回复 ───────────────────────────────────────────────────────┐
-        "stream_reply": False,                        # 启用流式回复（SSE）
-        "stream_buffer_chars": 40,                    # 流式缓冲阈值（字符）
-        "stream_chunk_max_chars": 500,                # 流式单段最大长度（字符）
+        "stream_reply": True,                         # 启用流式回复（SSE），加快用户感知速度
+        "stream_buffer_chars": 30,                    # 流式缓冲阈值（字符），降低以更快发送
+        "stream_chunk_max_chars": 200,                # 流式单段最大长度（字符），降低以更频繁发送
 
         # ┌─── 热更新与重连 ───────────────────────────────────────────────────┐
         "config_reload_sec": 2.0,                     # 配置热重载检查间隔（秒）
@@ -346,6 +353,23 @@ CONFIG = {
         "remember_facts_enabled": True,               # 启用事实记忆（AI 提取重要信息）
         "max_context_facts": 20,                      # 最多记录的事实数量
         "profile_inject_in_prompt": True,             # 在 prompt 中注入用户画像
+
+        # ┌─── 控制命令 ───────────────────────────────────────────────────────┐
+        "control_commands_enabled": True,             # 启用控制命令（/pause, /resume, /status）
+        "control_command_prefix": "/",                # 命令前缀
+        "control_allowed_users": [],                  # 允许使用命令的用户列表，空=所有人
+        "control_reply_visible": True,                # 控制命令回复是否可见
+
+        # ┌─── 定时静默 ───────────────────────────────────────────────────────┐
+        "quiet_hours_enabled": False,                 # 启用静默时段
+        "quiet_hours_start": "23:00",                 # 静默开始时间（HH:MM）
+        "quiet_hours_end": "07:00",                   # 静默结束时间（HH:MM）
+        "quiet_hours_reply": "",                      # 静默期间的自动回复，留空=不回复
+
+        # ┌─── 用量监控 ───────────────────────────────────────────────────────┐
+        "usage_tracking_enabled": True,               # 启用 token 用量追踪
+        "daily_token_limit": 0,                       # 每日 token 上限，0=不限制
+        "token_warning_threshold": 0.8,               # 达到上限的百分比时告警
 
         # ┌─── 情感识别 ───────────────────────────────────────────────────────┐
         "emotion_detection_enabled": True,            # 启用情感识别
@@ -387,7 +411,7 @@ def _load_api_keys() -> dict:
             }
     """
     try:
-        from api_keys import API_KEYS
+        from data.api_keys import API_KEYS
     except Exception:
         return {}
     if isinstance(API_KEYS, dict):

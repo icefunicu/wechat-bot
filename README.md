@@ -83,7 +83,7 @@ API_KEYS = {
 ### 4️⃣ 运行机器人
 
 ```bash
-python main.py
+python run.py start
 ```
 
 ---
@@ -92,26 +92,29 @@ python main.py
 
 ```
 wechat-chat/
-├── main.py              # 入口与主循环
-├── config.py            # 运行时配置
-├── api_keys.py          # API 密钥（gitignored）
+├── run.py               # 项目启动入口 (start/check/setup)
 ├── requirements.txt     # 依赖清单
+├── app/                 # 核心应用代码
+│   ├── bot.py           # 机器人主类
+│   ├── config.py        # 运行时配置
+│   ├── main.py          # 启动逻辑
+│   ├── core/            # 核心业务 (AI/Memory/Factory)
+│   ├── handlers/        # 消息处理 (Filter/Sender/Convert)
+│   └── utils/           # 通用工具
 │
-├── core/                # 核心功能模块
-│   ├── ai_client.py     # OpenAI 兼容客户端
-│   ├── memory.py        # SQLite 记忆库
-│   └── emotion.py       # 情感检测
+├── tools/               # 工具箱
+│   ├── chat_exporter/   # 聊天记录导出
+│   ├── prompt_gen/      # Prompt 生成器
+│   └── wx_db/           # 微信数据库接口
 │
-├── export/              # 聊天导出模块
-│   ├── cli.py           # CLI 入口
-│   └── csv_exporter.py  # CSV 导出器
+├── data/                # 数据目录 (gitignored)
+│   ├── api_keys.py      # API 密钥
+│   └── chat.db          # 记忆数据库
 │
-├── prompts/             # Prompt 管理模块
-│   ├── generator.py     # 个性化 Prompt 生成
-│   └── overrides.py     # Prompt 覆盖管理
+├── scripts/             # 维护脚本
+│   ├── check.py         # 环境检测
+│   └── setup_wizard.py  # 设置向导
 │
-├── wxManager/           # WeChatMsg 数据库接口
-├── chat_exports/        # 导出数据目录（gitignored）
 └── wxauto_logs/         # 运行日志目录
 ```
 
@@ -268,7 +271,7 @@ wechat-chat/
 > 💡 可直接从**已解密的** WeChatMsg 数据库导出，格式与原 WeChatMsg 保持一致。
 
 ```bash
-python -m export.cli --db-dir "E:\wxid_xxx\Msg" --db-version 4 --output-dir chat_exports
+python -m tools.chat_exporter.cli --db-dir "E:\wxid_xxx\Msg" --db-version 4 --output-dir chat_exports
 ```
 
 **常用参数**：
@@ -285,13 +288,13 @@ python -m export.cli --db-dir "E:\wxid_xxx\Msg" --db-version 4 --output-dir chat
 **示例**：
 ```bash
 # 导出所有联系人
-python -m export.cli --db-dir "E:\wxid_xxx\Msg" --output-dir chat_exports
+python -m tools.chat_exporter.cli --db-dir "E:\wxid_xxx\Msg" --output-dir chat_exports
 
 # 导出指定联系人
-python -m export.cli --db-dir "E:\wxid_xxx\Msg" --contact "张三" --contact "李四"
+python -m tools.chat_exporter.cli --db-dir "E:\wxid_xxx\Msg" --contact "张三" --contact "李四"
 
 # 导出指定时间范围
-python -m export.cli --db-dir "E:\wxid_xxx\Msg" --start "2024-01-01 00:00:00" --end "2024-12-31 23:59:59"
+python -m tools.chat_exporter.cli --db-dir "E:\wxid_xxx\Msg" --start "2024-01-01 00:00:00" --end "2024-12-31 23:59:59"
 ```
 
 ### 方式二：使用 WeChatMsg 工具
@@ -342,16 +345,16 @@ chat_exports/
 
 ```bash
 # 完整执行（需要 AI API）
-python -m prompts.generator
+python -m tools.prompt_gen.generator
 
 # 仅统计，不调用 AI
-python -m prompts.generator --dry-run
+python -m tools.prompt_gen.generator --dry-run
 
 # 只处理 Top 5 联系人
-python -m prompts.generator --top 5
+python -m tools.prompt_gen.generator --top 5
 
 # 限制每个联系人分析的消息数量
-python -m prompts.generator --limit 100
+python -m tools.prompt_gen.generator --limit 100
 ```
 
 ### 工作原理

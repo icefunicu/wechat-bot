@@ -7,9 +7,9 @@
     - emotion: 情感检测功能
 """
 
-from core.ai_client import AIClient
-from core.memory import MemoryManager
-from core.emotion import (
+from .ai_client import AIClient
+from .memory import MemoryManager
+from .emotion import (
     EmotionResult,
     detect_emotion_keywords,
     get_emotion_response_guide,

@@ -1,4 +1,6 @@
 httpx>=0.24.0,<1.0
+openai>=1.0.0
+flask>=2.0.0
 wxauto @ git+https://github.com/cluic/wxauto.git
 dateparser~=1.2.1
 lz4~=4.3.3

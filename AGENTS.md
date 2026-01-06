@@ -1,30 +1,32 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-- `main.py`: entry point; connects to WeChat via `wxauto`, polls messages, filters/normalizes events, and sends replies. Handles config hot-reload, reconnect backoff, and emoji sanitization.
-- `config.py`: runtime configuration (`CONFIG`/`get_config()`/`config`) for API presets, bot behavior, and logging.
-- `core/`: core functionality module
-  - `ai_client.py`: OpenAI-compatible `/chat/completions` client using `httpx` (async); per-chat history with TTL/size caps and retry backoff. Includes LRU-cached token estimation.
-  - `memory.py`: SQLite-backed chat history and user profile storage. Supports context manager protocol.
-  - `emotion.py`: Emotion detection module supporting keyword and AI modes; time-awareness, conversation style analysis. Uses `@dataclass(slots=True)`.
-- `export/`: chat export module
-  - `cli.py`: command-line entry point for CSV export.
-  - `csv_exporter.py`: CSV export implementation (WeChatMsg-compatible format).
-- `prompts/`: prompt management module
-  - `generator.py`: analyzes exported chat records (CSV) and generates personalized system prompts for top N contacts.
-  - `overrides.py`: loads and manages per-contact prompt overrides from JSON.
-- `wxManager/`: WeChatMsg database interface for reading decrypted WeChat databases.
-- `requirements.txt`: runtime dependencies (includes `wxauto` from GitHub).
-- `wxauto_logs/`: runtime logs (generated, rotating).
-- `chat_exports/`: WeChat chat history exports (CSV format, gitignored).
-- `__pycache__/`, `.venv/`, `.idea/`: local artifacts; keep out of commits.
+- `run.py`: Unified entry point (start/check/setup).
+- `requirements.txt`: Runtime dependencies.
+- `app/`: Main application package.
+  - `bot.py`: Main `WeChatBot` class controlling the lifecycle.
+  - `main.py`: Async entry point initializing the bot.
+  - `config.py`: Runtime configuration logic.
+  - `core/`: Core business logic (AI client, Memory, Factory, Emotion).
+  - `handlers/`: Message processing handlers (Filter, Sender, Converters).
+  - `utils/`: General utilities (Logging, Config loader, Common tools).
+- `tools/`: Standalone tools.
+  - `chat_exporter/`: CSV export logic.
+  - `prompt_gen/`: Personalized prompt generator.
+  - `wx_db/`: WeChat database interface.
+- `data/`: Data directory (API keys, databases - gitignored).
+- `scripts/`: Maintenance scripts (setup, check).
+- `wxauto_logs/`: Runtime logs.
 
 ## Build, Test, and Development Commands
 - `pip install -r requirements.txt`: install dependencies.
-- `python main.py`: run the bot after editing `config.py`.
+- `pip install -r requirements.txt`: install dependencies.
+- `python run.py start`: run the bot.
+- `python run.py check`: check environment and dependencies.
+- `python run.py setup`: run configuration wizard.
 - `python -m unittest discover -s tests`: run unit tests.
 - The app targets Windows + WeChat PC 3.9.x (4.x not supported). Keep the client logged in and running.
-- `config.py` changes are polled and hot-reloaded; `main.py` changes require a restart.
+- `app/config.py` changes are polled and hot-reloaded; logic changes require a restart.
 
 ## Configuration Notes
 - `api`: supports `presets` + `active_preset`; `base_url`/`model`/`api_key`, timeouts, retries, `temperature`, `max_tokens`/`max_completion_tokens`, and optional `reasoning_effort`.
@@ -55,9 +57,9 @@
 - Context manager support in `MemoryManager` for automatic resource cleanup.
 
 ## Data Workflow
-1. **Export chat history**: Use [WeChatMsg](https://github.com/LC044/WeChatMsg) or the built-in CLI (`python -m export.cli`) to export WeChat chats to CSV format.
+1. **Export chat history**: Use [WeChatMsg](https://github.com/LC044/WeChatMsg) or the built-in CLI (`python -m tools.chat_exporter.cli`) to export WeChat chats to CSV format.
 2. **Organize files**: Place exports in `chat_exports/聊天记录/<ContactName(wxid)>/<ContactName>.csv`.
-3. **Generate prompts**: Run `python -m prompts.generator` to analyze chats and generate personalized prompts.
+3. **Generate prompts**: Run `python -m tools.prompt_gen.generator` to analyze chats and generate personalized prompts.
 4. **Review output**: Check `chat_exports/top10_prompts_summary.json` for generated prompts.
 5. **Integrate**: Copy prompts to `config.py`'s `system_prompt_overrides` or use `prompt_overrides.py`.
 

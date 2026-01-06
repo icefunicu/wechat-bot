@@ -26,9 +26,9 @@ from datetime import datetime
 from pathlib import Path
 
 # Import project modules
-from config import CONFIG, _apply_api_keys
-from core.ai_client import AIClient
-from main import apply_ai_runtime_settings
+from app.config import CONFIG, _apply_api_keys
+from app.core.ai_client import AIClient
+from app.main import apply_ai_runtime_settings
 
 # Setup logging
 logging.basicConfig(

@@ -5,9 +5,9 @@ import os
 from multiprocessing import freeze_support
 from typing import Iterable, List, Optional
 
-from wxManager import DatabaseConnection
+from tools.wx_db import DatabaseConnection
 
-from export.csv_exporter import CSVExporter
+from .csv_exporter import CSVExporter
 
 
 def is_exportable_contact(contact, include_chatrooms: bool) -> bool:

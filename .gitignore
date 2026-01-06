@@ -1,7 +1,18 @@
-api_keys.py
+# 敏感数据
+data/api_keys.py
+data/*.db
+data/*.db-*
+
+# 缓存
 __pycache__/
 .venv/
+
+# IDE
 .idea/
+.vscode/
+
+# 运行时日志
 wxauto_logs/
-chat_history.db
-chat_exports/
+
+# 导出数据
+data/chat_exports/
