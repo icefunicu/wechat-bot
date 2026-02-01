@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; connect-src 'self' http://localhost:*;">
+    <title>微信AI助手</title>
+    <link rel="stylesheet" href="css/app.css">
+</head>
+
+<body class="no-select">
+    <!-- SVG 图标定义 -->
+    <svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+        <symbol id="icon-bot" viewBox="0 0 24 24">
+            <path d="M12 8V4H8" />
+            <rect x="4" y="8" width="16" height="12" rx="2" />
+            <circle cx="9" cy="13" r="1" />
+            <circle cx="15" cy="13" r="1" />
+            <path d="M9 17h6" />
+        </symbol>
+        <symbol id="icon-dashboard" viewBox="0 0 24 24">
+            <rect x="3" y="3" width="7" height="9" rx="1" />
+            <rect x="14" y="3" width="7" height="5" rx="1" />
+            <rect x="14" y="12" width="7" height="9" rx="1" />
+            <rect x="3" y="16" width="7" height="5" rx="1" />
+        </symbol>
+        <symbol id="icon-message" viewBox="0 0 24 24">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+        </symbol>
+        <symbol id="icon-settings" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="3" />
+            <path
+                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </symbol>
+        <symbol id="icon-terminal" viewBox="0 0 24 24">
+            <polyline points="4 17 10 11 4 5" />
+            <line x1="12" y1="19" x2="20" y2="19" />
+        </symbol>
+        <symbol id="icon-clock" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10" />
+            <polyline points="12 6 12 12 16 14" />
+        </symbol>
+        <symbol id="icon-zap" viewBox="0 0 24 24">
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+        </symbol>
+        <symbol id="icon-bar-chart" viewBox="0 0 24 24">
+            <line x1="12" y1="20" x2="12" y2="10" />
+            <line x1="18" y1="20" x2="18" y2="4" />
+            <line x1="6" y1="20" x2="6" y2="16" />
+        </symbol>
+        <symbol id="icon-activity" viewBox="0 0 24 24">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+        </symbol>
+        <symbol id="icon-play" viewBox="0 0 24 24">
+            <polygon points="5 3 19 12 5 21 5 3" />
+        </symbol>
+        <symbol id="icon-square" viewBox="0 0 24 24">
+            <rect x="4" y="4" width="16" height="16" rx="2" />
+        </symbol>
+        <symbol id="icon-pause" viewBox="0 0 24 24">
+            <rect x="6" y="4" width="4" height="16" />
+            <rect x="14" y="4" width="4" height="16" />
+        </symbol>
+        <symbol id="icon-refresh" viewBox="0 0 24 24">
+            <polyline points="23 4 23 10 17 10" />
+            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
+        </symbol>
+        <symbol id="icon-external" viewBox="0 0 24 24">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+            <polyline points="15 3 21 3 21 9" />
+            <line x1="10" y1="14" x2="21" y2="3" />
+        </symbol>
+        <symbol id="icon-minimize-2" viewBox="0 0 24 24">
+            <polyline points="4 14 10 14 10 20" />
+            <polyline points="20 10 14 10 14 4" />
+            <line x1="14" y1="10" x2="21" y2="3" />
+            <line x1="3" y1="21" x2="10" y2="14" />
+        </symbol>
+        <symbol id="icon-file-text" viewBox="0 0 24 24">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+            <line x1="16" y1="13" x2="8" y2="13" />
+            <line x1="16" y1="17" x2="8" y2="17" />
+            <polyline points="10 9 9 9 8 9" />
+        </symbol>
+        <symbol id="icon-user" viewBox="0 0 24 24">
+            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+            <circle cx="12" cy="7" r="4" />
+        </symbol>
+        <symbol id="icon-inbox" viewBox="0 0 24 24">
+            <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+            <path
+                d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+        </symbol>
+        <symbol id="icon-search" viewBox="0 0 24 24">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </symbol>
+        <symbol id="icon-trash" viewBox="0 0 24 24">
+            <polyline points="3 6 5 6 21 6" />
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+        </symbol>
+        <symbol id="icon-save" viewBox="0 0 24 24">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+            <polyline points="17 21 17 13 7 13 7 21" />
+            <polyline points="7 3 7 8 15 8" />
+        </symbol>
+        <symbol id="icon-check" viewBox="0 0 24 24">
+            <polyline points="20 6 9 17 4 12" />
+        </symbol>
+        <symbol id="icon-x" viewBox="0 0 24 24">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+        </symbol>
+        <symbol id="icon-alert-circle" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+        </symbol>
+        <symbol id="icon-info" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="16" x2="12" y2="12" />
+            <line x1="12" y1="8" x2="12.01" y2="8" />
+        </symbol>
+        <symbol id="icon-minus" viewBox="0 0 24 24">
+            <line x1="5" y1="12" x2="19" y2="12" />
+        </symbol>
+        <symbol id="icon-maximize" viewBox="0 0 24 24">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+        </symbol>
+        <symbol id="icon-plus" viewBox="0 0 24 24">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+        </symbol>
+    </svg>
+
+    <!-- 自定义标题栏 -->
+    <header class="titlebar">
+        <div class="titlebar-left">
+            <svg class="icon titlebar-logo">
+                <use href="#icon-bot" />
+            </svg>
+            <span class="titlebar-title">微信AI助手</span>
+        </div>
+        <div class="titlebar-controls">
+            <button class="titlebar-btn" id="btn-minimize" title="最小化">
+                <svg class="icon">
+                    <use href="#icon-minus" />
+                </svg>
+            </button>
+            <button class="titlebar-btn" id="btn-maximize" title="最大化">
+                <svg class="icon">
+                    <use href="#icon-maximize" />
+                </svg>
+            </button>
+            <button class="titlebar-btn btn-close" id="btn-close" title="关闭">
+                <svg class="icon">
+                    <use href="#icon-x" />
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- 主容器 -->
+    <div class="app-container">
+        <!-- 侧边栏 -->
+        <nav class="sidebar">
+            <div class="sidebar-nav">
+                <a href="#" class="nav-item active" data-page="dashboard">
+                    <svg class="icon">
+                        <use href="#icon-dashboard" />
+                    </svg>
+                    <span class="nav-label">仪表盘</span>
+                </a>
+                <a href="#" class="nav-item" data-page="messages">
+                    <svg class="icon">
+                        <use href="#icon-message" />
+                    </svg>
+                    <span class="nav-label">消息</span>
+                </a>
+                <a href="#" class="nav-item" data-page="settings">
+                    <svg class="icon">
+                        <use href="#icon-settings" />
+                    </svg>
+                    <span class="nav-label">设置</span>
+                </a>
+                <a href="#" class="nav-item" data-page="logs">
+                    <svg class="icon">
+                        <use href="#icon-terminal" />
+                    </svg>
+                    <span class="nav-label">日志</span>
+                </a>
+            </div>
+
+            <div class="sidebar-footer">
+                <div class="status-badge" id="status-badge">
+                    <span class="status-dot offline"></span>
+                    <span class="status-label">未连接</span>
+                </div>
+                <div class="version-text" id="version-text">v1.0.0</div>
+            </div>
+        </nav>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+            <!-- 仪表盘 -->
+            <section class="page active" id="page-dashboard">
+                <div class="page-header">
+                    <h1 class="page-title">仪表盘</h1>
+                    <div class="page-actions">
+                        <button class="btn btn-primary" id="btn-toggle-bot">
+                            <svg class="icon icon-sm">
+                                <use href="#icon-play" />
+                            </svg>
+                            <span>启动机器人</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 统计卡片 -->
+                <div class="stats-row">
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <svg class="icon">
+                                <use href="#icon-clock" />
+                            </svg>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="stat-uptime">--</div>
+                            <div class="stat-label">运行时长</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <svg class="icon">
+                                <use href="#icon-message" />
+                            </svg>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="stat-today-replies">0</div>
+                            <div class="stat-label">今日回复</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <svg class="icon">
+                                <use href="#icon-zap" />
+                            </svg>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="stat-today-tokens">0</div>
+                            <div class="stat-label">今日Token</div>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <svg class="icon">
+                                <use href="#icon-bar-chart" />
+                            </svg>
+                        </div>
+                        <div class="stat-content">
+                            <div class="stat-value" id="stat-total-replies">0</div>
+                            <div class="stat-label">累计回复</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 卡片网格 -->
+                <div class="card-grid">
+                    <!-- 机器人状态 -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2 class="card-title">机器人状态</h2>
+                        </div>
+                        <div class="card-body">
+                            <div class="bot-control">
+                                <div class="bot-avatar">
+                                    <svg class="icon icon-xl">
+                                        <use href="#icon-bot" />
+                                    </svg>
+                                </div>
+                                <div class="bot-info">
+                                    <div class="bot-name">微信AI助手</div>
+                                    <div class="bot-state" id="bot-state">
+                                        <span class="bot-state-dot offline"></span>
+                                        <span class="bot-state-text">离线</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="bot-actions">
+                                <button class="btn btn-secondary btn-sm" id="btn-pause">
+                                    <svg class="icon icon-sm">
+                                        <use href="#icon-pause" />
+                                    </svg>
+                                    <span>暂停</span>
+                                </button>
+                                <button class="btn btn-secondary btn-sm" id="btn-restart">
+                                    <svg class="icon icon-sm">
+                                        <use href="#icon-refresh" />
+                                    </svg>
+                                    <span>重启</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 快捷操作 -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2 class="card-title">快捷操作</h2>
+                        </div>
+                        <div class="card-body">
+                            <div class="quick-grid">
+                                <button class="quick-btn" id="btn-open-wechat">
+                                    <svg class="icon">
+                                        <use href="#icon-external" />
+                                    </svg>
+                                    <span>打开微信</span>
+                                </button>
+                                <button class="quick-btn" id="btn-view-logs">
+                                    <svg class="icon">
+                                        <use href="#icon-file-text" />
+                                    </svg>
+                                    <span>查看日志</span>
+                                </button>
+                                <button class="quick-btn" id="btn-refresh-status">
+                                    <svg class="icon">
+                                        <use href="#icon-refresh" />
+                                    </svg>
+                                    <span>刷新状态</span>
+                                </button>
+                                <button class="quick-btn" id="btn-minimize-tray">
+                                    <svg class="icon">
+                                        <use href="#icon-minimize-2" />
+                                    </svg>
+                                    <span>最小化</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 最近消息 -->
+                <div class="card full-width">
+                    <div class="card-header">
+                        <h2 class="card-title">最近消息</h2>
+                        <button class="btn btn-ghost btn-sm" id="btn-view-all-messages">查看全部</button>
+                    </div>
+                    <div class="card-body">
+                        <div class="message-list" id="recent-messages">
+                            <div class="empty-state">
+                                <svg class="icon">
+                                    <use href="#icon-inbox" />
+                                </svg>
+                                <span class="empty-state-text">暂无消息记录</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 消息页面 -->
+            <section class="page" id="page-messages">
+                <div class="page-header">
+                    <h1 class="page-title">消息中心</h1>
+                    <div class="page-actions">
+                        <div class="search-wrapper">
+                            <svg class="icon">
+                                <use href="#icon-search" />
+                            </svg>
+                            <input type="text" class="search-input" placeholder="搜索消息..." id="message-search">
+                        </div>
+                        <button class="btn btn-secondary btn-sm" id="btn-refresh-messages">
+                            <svg class="icon icon-sm">
+                                <use href="#icon-refresh" />
+                            </svg>
+                            <span>刷新</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="message-list full-height" id="all-messages">
+                    <div class="loading-state">
+                        <div class="spinner"></div>
+                        <span>加载中...</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 设置页面 -->
+            <section class="page" id="page-settings">
+                <div class="page-header">
+                    <h1 class="page-title">配置中心</h1>
+                    <div class="page-actions">
+                        <button class="btn btn-secondary btn-sm" id="btn-refresh-config">
+                            <svg class="icon icon-sm">
+                                <use href="#icon-refresh" />
+                            </svg>
+                            <span>刷新</span>
+                        </button>
+                        <button class="btn btn-primary" id="btn-save-settings">
+                            <svg class="icon icon-sm">
+                                <use href="#icon-save" />
+                            </svg>
+                            <span>保存配置</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="settings-container">
+                    <!-- 当前配置概览 -->
+                    <div class="settings-section">
+                        <div class="settings-section-header">
+                            <h2 class="settings-section-title">当前配置</h2>
+                        </div>
+                        <div class="settings-section-body">
+                            <div class="config-info-grid">
+                                <div class="config-info-card">
+                                    <div class="config-info-label">当前预设</div>
+                                    <div class="config-info-value" id="info-active-preset">--</div>
+                                </div>
+                                <div class="config-info-card">
+                                    <div class="config-info-label">模型</div>
+                                    <div class="config-info-value" id="info-model">--</div>
+                                </div>
+                                <div class="config-info-card">
+                                    <div class="config-info-label">模型别名</div>
+                                    <div class="config-info-value" id="info-alias">--</div>
+                                </div>
+                                <div class="config-info-card">
+                                    <div class="config-info-label">API Key</div>
+                                    <div class="config-info-value" id="info-api-key">--</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 预设切换 -->
+                    <div class="settings-section">
+                        <div class="settings-section-header">
+                            <h2 class="settings-section-title">API 预设</h2>
+                            <button class="btn btn-secondary btn-sm" id="btn-add-preset" style="margin-left: auto;">
+                                <svg class="icon icon-sm">
+                                    <use href="#icon-plus" />
+                                </svg>
+                                <span>新增</span>
+                            </button>
+                        </div>
+                        <div class="settings-section-body">
+                            <div class="preset-list" id="preset-list">
+                                <div class="loading-state">
+                                    <div class="spinner"></div>
+                                    <span>加载预设中...</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 机器人设置 -->
+                    <div class="settings-section">
+                        <div class="settings-section-header">
+                            <h2 class="settings-section-title">机器人设置</h2>
+                        </div>
+                        <div class="settings-section-body">
+                            <div class="settings-grid">
+                                <div class="form-group">
+                                    <label class="form-label">微信昵称</label>
+                                    <input type="text" class="form-input" id="setting-self-name" placeholder="你的微信昵称">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">回复后缀</label>
+                                    <input type="text" class="form-input" id="setting-reply-suffix"
+                                        placeholder="（AI回复）">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-checkbox">
+                                        <input type="checkbox" id="setting-stream-reply">
+                                        <span class="form-checkbox-label">启用流式回复</span>
+                                    </label>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-checkbox">
+                                        <input type="checkbox" id="setting-group-at-only">
+                                        <span class="form-checkbox-label">群聊仅@时回复</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 白名单设置 -->
+                    <div class="settings-section">
+                        <div class="settings-section-header">
+                            <h2 class="settings-section-title">白名单管理</h2>
+                        </div>
+                        <div class="settings-section-body">
+                            <div class="settings-grid">
+                                <div class="form-group full-width">
+                                    <label class="form-checkbox">
+                                        <input type="checkbox" id="setting-whitelist-enabled">
+                                        <span class="form-checkbox-label">启用白名单模式（仅回复白名单中的联系人/群）</span>
+                                    </label>
+                                </div>
+                                <div class="form-group full-width">
+                                    <label class="form-label">白名单（每行一个联系人或群名）</label>
+                                    <textarea class="form-textarea" id="setting-whitelist" rows="4"
+                                        placeholder="联系人1&#10;群聊1&#10;..."></textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 日志页面 -->
+            <section class="page" id="page-logs">
+                <div class="page-header">
+                    <h1 class="page-title">系统日志</h1>
+                    <div class="page-actions">
+                        <label class="form-checkbox">
+                            <input type="checkbox" id="setting-auto-scroll" checked>
+                            <span class="form-checkbox-label">自动滚动</span>
+                        </label>
+                        <button class="btn btn-secondary btn-sm" id="btn-clear-logs">
+                            <svg class="icon icon-sm">
+                                <use href="#icon-trash" />
+                            </svg>
+                            <span>清空</span>
+                        </button>
+                        <button class="btn btn-secondary btn-sm" id="btn-refresh-logs">
+                            <svg class="icon icon-sm">
+                                <use href="#icon-refresh" />
+                            </svg>
+                            <span>刷新</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="log-container">
+                    <pre class="log-content" id="log-content">等待日志加载...</pre>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- 预设编辑模态框 -->
+    <div class="modal-overlay" id="preset-modal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 class="modal-title">编辑预设</h3>
+                <button class="modal-close" id="btn-close-modal">
+                    <svg class="icon icon-sm">
+                        <use href="#icon-x" />
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="settings-grid" style="grid-template-columns: 1fr;">
+                    <input type="hidden" id="edit-preset-original-name">
+                    <div class="form-group">
+                        <label class="form-label">预设名称 (ID)</label>
+                        <input type="text" class="form-input" id="edit-preset-name" placeholder="例如: OpenAI">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">模型 (Model)</label>
+                        <input type="text" class="form-input" id="edit-preset-model" placeholder="例如: gpt-4o-mini">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">别名 (Alias)</label>
+                        <input type="text" class="form-input" id="edit-preset-alias" placeholder="例如: 小欧">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">API Key</label>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="password" class="form-input" id="edit-preset-key" style="flex: 1;"
+                                placeholder="输入 API Key">
+                            <button class="btn btn-secondary btn-sm" id="btn-toggle-key" title="显示/隐藏">
+                                <svg class="icon icon-sm">
+                                    <use href="#icon-message" />
+                                </svg>
+                            </button>
+                        </div>
+                        <span class="form-label" style="font-size: 11px; margin-top: 4px;">留空则保持原有 Key 不变</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary btn-sm" id="btn-cancel-modal">取消</button>
+                <button class="btn btn-primary btn-sm" id="btn-save-modal">确认保存</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast 容器 -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <!-- 重构后的统一入口（已内置 API 和组件功能）-->
+    <script src="js/app.js"></script>
+</body>
+
+</html>

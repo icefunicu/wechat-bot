@@ -1,10 +1,9 @@
-httpx>=0.24.0,<1.0
-openai>=1.0.0
-flask>=2.0.0
-wxauto @ git+https://github.com/cluic/wxauto.git
-dateparser~=1.2.1
-lz4~=4.3.3
-Pillow~=11.0.0
-protobuf~=4.25.8
-xmltodict~=0.14.2
-zstandard~=0.23.0
+wxauto>=3.9.8.15
+openai>=1.12.0
+httpx>=0.27.0
+quart>=0.19.0
+hypercorn>=0.16.0
+pydantic>=2.0.0
+colorlog>=6.8.0
+pyyaml>=6.0
+schedule>=1.2.0

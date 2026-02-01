@@ -285,6 +285,74 @@ class MemoryManager:
             context.append({"role": row["role"], "content": content})
         return context
 
+    def get_global_recent_messages(self, limit: int = 50) -> List[dict]:
+        """
+        获取全局最近消息历史（跨所有会话）。
+        
+        Args:
+            limit: 返回条数限制
+            
+        Returns:
+            包含完整消息信息的列表:
+            [
+                {
+                    "id": 1,
+                    "wx_id": "wxid_...",
+                    "role": "user",
+                    "content": "消息内容",
+                    "created_at": 1234567890
+                },
+                ...
+            ]
+        """
+        try:
+            limit_val = int(limit)
+        except (TypeError, ValueError):
+            limit_val = 50
+        
+        if limit_val <= 0:
+            return []
+            
+        with self._lock:
+            # 联表查询获取昵称（可选，这里先只查历史表，前端可能需要 sender name）
+            # 为了性能，这里先只查 chat_history，如果需要昵称，前端可以根据 wx_id 缓存
+            # 或者我们在这里 join user_profiles
+            
+            # 使用 left join 获取 nickname
+            sql = """
+                SELECT 
+                    h.id, h.wx_id, h.role, h.content, h.created_at,
+                    u.nickname, u.relationship
+                FROM chat_history h
+                LEFT JOIN user_profiles u ON h.wx_id = u.wx_id
+                ORDER BY h.created_at DESC
+                LIMIT ?
+            """
+            rows = self._conn.execute(sql, (limit_val,)).fetchall()
+            
+        messages = []
+        # Reverse to chronological order (oldest first) ? 
+        # Usually web chat UI wants newest at bottom. 
+        # API gets desc (newest first), app.js renders. 
+        # If app.js prepends, we want newest first. If it appends, we want oldest first.
+        # app.js renderMessages simple map.
+        # Usually list APIs return sorted by time desc or asc.
+        # Let's return sorted by time ASC (chronological) for chat view consistency.
+        
+        for row in reversed(rows):
+            msg = {
+                "id": row["id"],
+                "wx_id": row["wx_id"],
+                "role": row["role"],
+                "content": row["content"],
+                "timestamp": row["created_at"],
+                "sender": row["nickname"] or row["wx_id"], # Fallback to wx_id if no nickname
+                "is_self": row["role"] == "assistant"
+            }
+            messages.append(msg)
+            
+        return messages
+
     # ==================== 用户画像方法 ====================
 
     def get_user_profile(self, wx_id: str) -> Dict[str, Any]:

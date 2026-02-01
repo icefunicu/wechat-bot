@@ -84,6 +84,10 @@ class WeChatBot:
         # 日志标志
         self.log_message_content: bool = True
         self.log_reply_content: bool = True
+        
+        # 停止事件（由 BotManager 注入或自行创建）
+        self._stop_event: Optional[asyncio.Event] = None
+        self._is_paused: bool = False
 
     async def initialize(self) -> Optional["WeChat"]:
         try:
@@ -108,12 +112,12 @@ class WeChatBot:
 
         # 初始化微信客户端
         reconnect_policy = get_reconnect_policy(self.bot_cfg)
-        wx = await reconnect_wechat("初始化", reconnect_policy)
-        if wx is None:
+        self.wx = await reconnect_wechat("初始化", reconnect_policy)
+        if self.wx is None:
             logging.error("微信初始化失败")
             return None
             
-        return wx
+        return self.wx
 
     def _apply_config(self) -> None:
         self.bot_cfg = self.config.get("bot", {})
@@ -147,7 +151,7 @@ class WeChatBot:
         
         last_poll_ok_ts = time.time()
         
-        while True:
+        while not self._should_stop():
             try:
                 now = time.time()
                 
@@ -220,6 +224,26 @@ class WeChatBot:
             await asyncio.sleep(poll_interval)
 
         # 清理资源
+        await self.shutdown()
+
+    def _should_stop(self) -> bool:
+        """检查是否应该停止"""
+        if self._stop_event and self._stop_event.is_set():
+            return True
+        return False
+    
+    def pause(self):
+        """暂停机器人"""
+        self._is_paused = True
+        logging.info("机器人已暂停")
+    
+    def resume(self):
+        """恢复机器人"""
+        self._is_paused = False
+        logging.info("机器人已恢复")
+
+    async def shutdown(self) -> None:
+        """优雅关闭，清理所有资源"""
         if self.pending_tasks:
             for task in self.pending_tasks:
                 task.cancel()
@@ -477,9 +501,12 @@ class WeChatBot:
             self.memory.add_message(chat_id, "assistant", reply_text)
             
         # 事实提取（后台）
+
         if user_profile and self.bot_cfg.get("remember_facts_enabled", False):
             # 发后即忘的任务
-            pass 
+            asyncio.create_task(
+                self._extract_facts_background(chat_id, user_text, reply_text, user_profile)
+            ) 
 
     async def _analyze_emotion(self, chat_id: str, text: str) -> Optional[EmotionResult]:
         mode = str(self.bot_cfg.get("emotion_detection_mode", "keywords")).lower()
@@ -493,9 +520,73 @@ class WeChatBot:
             if resp:
                 result = parse_emotion_ai_response(resp)
                 if result:
+
                     return result
         
         return detect_emotion_keywords(text)
+
+    async def _extract_facts_background(
+        self, chat_id: str, user_text: str, assistant_reply: str, user_profile: Dict[str, Any]
+    ) -> None:
+        """后台异步提取事实"""
+        try:
+            if not self.ai_client:
+                return
+
+            existing_facts = user_profile.get("context_facts", [])
+            prompt = get_fact_extraction_prompt(user_text, assistant_reply, existing_facts)
+            
+            # 使用 AI 分析
+            resp = await self.ai_client.generate_reply(
+                f"__facts__{chat_id}",
+                prompt,
+                system_prompt="你是一个信息提取助手，只返回 JSON 格式的结果。"
+            )
+            
+            if not resp:
+                return
+                
+            new_facts, relationship_hint, traits = parse_fact_extraction_response(resp)
+            
+            if not self.memory:
+                return
+                
+            # 1. 保存新事实
+            if new_facts:
+                for fact in new_facts:
+                    self.memory.add_context_fact(chat_id, fact)
+                logging.info(f"提取到新事实 [{chat_id}]: {new_facts}")
+            
+            # 2. 更新性格特征
+            if traits:
+                current_traits = user_profile.get("personality", "")
+                # 简单追加，实际可能需要更复杂的合并逻辑
+                updated_traits = f"{current_traits} {','.join(traits)}".strip()
+                # 限制长度防止无限增长
+                if len(updated_traits) > 200:
+                    updated_traits = updated_traits[-200:]
+                self.memory.update_user_profile(chat_id, personality=updated_traits)
+            
+            # 3. 关系演进（结合互动次数）
+            if relationship_hint:
+                # AI 建议的关系
+                # 这里可以加个逻辑：只有当 AI 建议的关系比当前关系更"亲密"时才更新
+                # 或者简单信任 AI
+                pass
+            
+            # 基于规则的关系演进
+            msg_count = user_profile.get("message_count", 0)
+            current_rel = user_profile.get("relationship", "unknown")
+            new_rel = get_relationship_evolution_hint(msg_count, current_rel)
+            
+            if new_rel and new_rel != current_rel:
+                self.memory.update_user_profile(chat_id, relationship=new_rel)
+                logging.info(f"关系升级 [{chat_id}]: {current_rel} -> {new_rel}")
+                
+        except Exception as e:
+            logging.error(f"事实提取任务失败: {e}")
+        
+
 
     async def _send_smart_reply(self, wx: "WeChat", event: MessageEvent, reply_text: str) -> None:
         chunk_size = as_int(self.bot_cfg.get("reply_chunk_size", 500), 500)
@@ -547,4 +638,46 @@ class WeChatBot:
             
         except Exception as e:
             logging.error("IPC 命令执行失败: %s", e)
+
+    async def send_text_message(self, target: str, content: str) -> Dict[str, Any]:
+        """
+        发送文本消息（供外部调用）
+        
+        Args:
+            target: 目标名称（微信号/备注/群名）
+            content: 消息内容
+            
+        Returns:
+            执行结果字典
+        """
+        if not self.wx:
+            return {'success': False, 'message': '微信客户端未连接'}
+            
+        try:
+            async with self.wx_lock:
+                 await asyncio.to_thread(
+                    send_message, self.wx, target, content, self.bot_cfg
+                )
+            
+            # 记录到 IPC/日志
+            self.ipc.log_message("API", content, "outgoing", target)
+            logging.info(f"API 发送消息 | 目标={target} | 内容={content}")
+            
+            # 记录到记忆
+            if self.memory:
+                # 尝试猜测 chat_id
+                # 注意：这里 target 可能是昵称，memory 需要 wx_id
+                # 暂时存 target，或者如果 access memory 失败也无所谓
+                # 更好的做法是 bot 内部维护 target -> wx_id 映射，但现在没有
+                # 先简单记录为 target
+                chat_id = target
+                # Check if group
+                # logic to detect group vs friend is tricky without wx object details
+                # Assume friend for now or just log
+                self.memory.add_message(chat_id, "assistant", content)
+
+            return {'success': True, 'message': '发送成功'}
+        except Exception as e:
+            logging.error(f"消息发送失败: {e}")
+            return {'success': False, 'message': f'发送失败: {str(e)}'}
 

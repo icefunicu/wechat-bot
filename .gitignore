@@ -2,17 +2,41 @@
 data/api_keys.py
 data/*.db
 data/*.db-*
+data/config_override.json
+chat_exports/
 
-# 缓存
+# Python
 __pycache__/
+*.py[cod]
+*$py.class
 .venv/
+venv/
+env/
+.env
 
 # IDE
 .idea/
 .vscode/
+*.swp
+*.swo
 
 # 运行时日志
 wxauto_logs/
+*.log
 
-# 导出数据
-data/chat_exports/
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Electron 构建
+dist/
+backend-dist/
+build/
+*.spec
+release/
+
+# OS
+.DS_Store
+Thumbs.db

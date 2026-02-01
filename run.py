@@ -14,8 +14,16 @@
     python run.py <command> --help
 """
 
-import argparse
 import sys
+import os
+
+# 强制使用 UTF-8 编码（解决 Windows 控制台乱码问题）
+if sys.platform == 'win32':
+    os.environ['PYTHONIOENCODING'] = 'utf-8'
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
+import argparse
 
 
 def print_banner():
@@ -35,7 +43,7 @@ def cmd_start(args):
     
     # Lazy import 避免不必要的依赖加载
     import asyncio
-    from app.main import main
+    from backend.main import main
     asyncio.run(main())
 
 
@@ -52,18 +60,22 @@ def cmd_check(args):
 
 
 def cmd_web(args):
-    """启动 Web 控制面板"""
+    """启动 Web API 服务"""
     print_banner()
     
     host = args.host if hasattr(args, 'host') else "0.0.0.0"
     port = args.port if hasattr(args, 'port') else 5000
     
-    print(f"🌐 启动 Web 控制面板...")
-    print(f"📍 访问地址: http://localhost:{port}")
+    debug = args.debug if hasattr(args, 'debug') else False
+    
+    print(f"🌐 启动 API 服务...")
+    print(f"📍 访问地址: http://{host}:{port}")
+    if debug:
+        print("🔧 调试模式: 已开启 (热重载)")
     print("按 Ctrl+C 停止服务\n")
     
-    from web.app import app
-    app.run(host=host, port=port, debug=False)
+    from backend.api import run_server
+    run_server(host=host, port=port, debug=debug)
 
 
 def main():
@@ -129,6 +141,11 @@ def main():
         type=int,
         default=5000,
         help="监听端口（默认 5000）",
+    )
+    parser_web.add_argument(
+        "--debug",
+        action="store_true",
+        help="开启调试模式（启用热重载）",
     )
     parser_web.set_defaults(func=cmd_web)
     

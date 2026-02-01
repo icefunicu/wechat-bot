@@ -1,0 +1,53 @@
+{
+  "name": "wechat-ai-assistant",
+  "version": "1.0.0",
+  "description": "微信AI助手 - 桌面客户端",
+  "main": "src/main/index.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "chcp 65001 && electron . --dev",
+    "build": "electron-builder",
+    "build:win": "electron-builder --win",
+    "pack": "electron-builder --dir"
+  },
+  "author": "Dxj",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "dependencies": {
+    "electron-store": "^8.1.0",
+    "iconv-lite": "^0.7.2"
+  },
+  "build": {
+    "appId": "com.wechat.aibot",
+    "productName": "微信AI助手",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "!**/node_modules/*/{CHANGELOG.md,README.md,readme.md}"
+    ],
+    "extraResources": [
+      {
+        "from": "backend-dist/",
+        "to": "backend/"
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "src/assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "src/assets/icon.ico",
+      "uninstallerIcon": "src/assets/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "微信AI助手"
+    }
+  }
+}

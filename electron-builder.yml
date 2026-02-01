@@ -1,0 +1,45 @@
+appId: com.wechat.aibot
+productName: 微信AI助手
+
+directories:
+  output: dist
+  buildResources: electron/assets
+
+files:
+  - electron/**/*
+  - "!**/node_modules/*/{CHANGELOG.md,README.md,readme.md}"
+  - "!**/node_modules/*/{test,__tests__,tests,*.test.js}"
+
+extraResources:
+  - from: backend-dist/wechat-bot-backend/
+    to: backend/
+    filter:
+      - "**/*"
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: electron/assets/icon.png
+  publisherName: Dxj
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: 微信AI助手
+  installerLanguages:
+    - zh_CN
+  language: 2052  # 简体中文
+
+# 压缩配置
+compression: maximum
+
+# 发布配置（可选）
+# publish:
+#   provider: github
+#   owner: your-github-username
+#   repo: wechat-ai-assistant

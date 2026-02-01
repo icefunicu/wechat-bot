@@ -2,31 +2,38 @@
 
 ## Project Structure & Module Organization
 - `run.py`: Unified entry point (start/check/setup).
-- `requirements.txt`: Runtime dependencies.
-- `app/`: Main application package.
+- `requirements.txt`: Python runtime dependencies.
+- `package.json`: Electron/Node.js dependencies.
+- `backend/`: Main application package (Python).
   - `bot.py`: Main `WeChatBot` class controlling the lifecycle.
   - `main.py`: Async entry point initializing the bot.
   - `config.py`: Runtime configuration logic.
+  - `api.py`: Quart-based Web API server.
   - `core/`: Core business logic (AI client, Memory, Factory, Emotion).
   - `handlers/`: Message processing handlers (Filter, Sender, Converters).
   - `utils/`: General utilities (Logging, Config loader, Common tools).
+- `src/`: Electron frontend source.
+  - `main/`: Electron main process.
+  - `renderer/`: Web interface (HTML/JS/CSS).
 - `tools/`: Standalone tools.
-  - `chat_exporter/`: CSV export logic.
+  - `chat_exporter/`: CSV export logic (supports direct DB reading).
   - `prompt_gen/`: Personalized prompt generator.
-  - `wx_db/`: WeChat database interface.
+  - `wx_db/`: WeChat database interface (decryption & parsing).
 - `data/`: Data directory (API keys, databases - gitignored).
 - `scripts/`: Maintenance scripts (setup, check).
 - `wxauto_logs/`: Runtime logs.
 
 ## Build, Test, and Development Commands
-- `pip install -r requirements.txt`: install dependencies.
-- `pip install -r requirements.txt`: install dependencies.
-- `python run.py start`: run the bot.
+- `pip install -r requirements.txt`: install Python dependencies.
+- `npm install`: install Electron dependencies.
+- `npm run dev`: start desktop client (and backend) in dev mode.
+- `python run.py start`: run the bot (headless).
+- `python run.py web`: run the Web API server.
 - `python run.py check`: check environment and dependencies.
 - `python run.py setup`: run configuration wizard.
 - `python -m unittest discover -s tests`: run unit tests.
 - The app targets Windows + WeChat PC 3.9.x (4.x not supported). Keep the client logged in and running.
-- `app/config.py` changes are polled and hot-reloaded; logic changes require a restart.
+- `backend/config.py` changes are polled and hot-reloaded; logic changes require a restart.
 
 ## Configuration Notes
 - `api`: supports `presets` + `active_preset`; `base_url`/`model`/`api_key`, timeouts, retries, `temperature`, `max_tokens`/`max_completion_tokens`, and optional `reasoning_effort`.
@@ -49,6 +56,7 @@
 - **Emotion detection**: keyword-based and AI-based emotion analysis with configurable modes.
 - **Humanization**: time-aware prompts, conversation style adaptation, emotion trend analysis, and relationship evolution.
 - **Personalized prompt generation**: analyze exported chat history to generate per-contact system prompts that mimic user's conversation style.
+- **Web API & Dashboard**: Monitor status, send messages, and manage config via HTTP/Electron.
 
 ## Performance Optimizations
 - `@dataclass(slots=True)` on `EmotionResult` for reduced memory footprint.
@@ -57,8 +65,8 @@
 - Context manager support in `MemoryManager` for automatic resource cleanup.
 
 ## Data Workflow
-1. **Export chat history**: Use [WeChatMsg](https://github.com/LC044/WeChatMsg) or the built-in CLI (`python -m tools.chat_exporter.cli`) to export WeChat chats to CSV format.
-2. **Organize files**: Place exports in `chat_exports/聊天记录/<ContactName(wxid)>/<ContactName>.csv`.
+1. **Export chat history**: Use the built-in CLI (`python -m tools.chat_exporter.cli`) to export WeChat chats to CSV format (supports direct DB decryption).
+2. **Organize files**: Place exports in `chat_exports/聊天记录/<ContactName(wxid)>/<ContactName>.csv` (auto-handled by exporter).
 3. **Generate prompts**: Run `python -m tools.prompt_gen.generator` to analyze chats and generate personalized prompts.
 4. **Review output**: Check `chat_exports/top10_prompts_summary.json` for generated prompts.
 5. **Integrate**: Copy prompts to `config.py`'s `system_prompt_overrides` or use `prompt_overrides.py`.
@@ -81,4 +89,3 @@
 - `config.py` contains API keys; keep placeholders in version control and avoid sharing real secrets.
 - Logs in `wxauto_logs/` may include message content; treat them as sensitive and do not commit them.
 - `chat_exports/` contains sensitive chat history; keep it gitignored and do not share.
-
