@@ -110,6 +110,62 @@ const Events = {
     BOT_STOP: 'bot:stop'
 };
 
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//                               常量定义
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const PROVIDER_METADATA = {
+    'OpenAI': {
+        models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-4', 'gpt-3.5-turbo', 'gpt-3.5-turbo-16k', 'o1-preview', 'o1-mini'],
+        apiKeyUrl: 'https://platform.openai.com/api-keys'
+    },
+    'Doubao': {
+        models: ['doubao-seed-1-8-251228', 'doubao-pro-256k', 'doubao-pro-128k', 'doubao-pro-32k', 'doubao-pro-4k', 'doubao-lite-128k', 'doubao-lite-32k', 'doubao-lite-4k'],
+        apiKeyUrl: 'https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey'
+    },
+    'DeepSeek': {
+        models: ['deepseek-chat', 'deepseek-coder', 'deepseek-reasoner'],
+        apiKeyUrl: 'https://platform.deepseek.com/api_keys'
+    },
+    'Moonshot': {
+        models: ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k', 'moonshot-v1-auto'],
+        apiKeyUrl: 'https://platform.moonshot.cn/console/api-keys'
+    },
+    'Zhipu': {
+        models: ['glm-4.5-air', 'glm-4-plus', 'glm-4-air', 'glm-4-airx', 'glm-4-long', 'glm-4-flash', 'glm-4', 'glm-3-turbo'],
+        apiKeyUrl: 'https://open.bigmodel.cn/usercenter/apikeys'
+    },
+    'SiliconFlow': {
+        models: ['deepseek-ai/DeepSeek-V3', 'deepseek-ai/DeepSeek-R1', 'Qwen/Qwen2.5-72B-Instruct', 'Qwen/Qwen2.5-32B-Instruct', 'Qwen/Qwen2.5-7B-Instruct', 'THUDM/glm-4-9b-chat'],
+        apiKeyUrl: 'https://cloud.siliconflow.cn/account/ak'
+    },
+    'Mistral': {
+        models: ['mistral-large-latest', 'mistral-medium-latest', 'mistral-small-latest', 'open-mixtral-8x22b', 'open-mixtral-8x7b', 'open-mistral-7b'],
+        apiKeyUrl: 'https://console.mistral.ai/api-keys/'
+    },
+    'Groq': {
+        models: ['llama3-70b-8192', 'llama3-8b-8192', 'llama-3.1-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768', 'gemma2-9b-it', 'gemma-7b-it'],
+        apiKeyUrl: 'https://console.groq.com/keys'
+    },
+    'OpenRouter': {
+        models: ['openai/gpt-4o', 'openai/gpt-4o-mini', 'anthropic/claude-3.5-sonnet', 'anthropic/claude-3-opus', 'google/gemini-pro-1.5', 'meta-llama/llama-3.1-70b-instruct'],
+        apiKeyUrl: 'https://openrouter.ai/keys'
+    },
+    'Together': {
+        models: ['meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo', 'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo', 'mistralai/Mixtral-8x22B-Instruct-v0.1', 'mistralai/Mixtral-8x7B-Instruct-v0.1', 'Qwen/Qwen2-72B-Instruct'],
+        apiKeyUrl: 'https://api.together.xyz/settings/api-keys'
+    },
+    'Fireworks': {
+        models: ['accounts/fireworks/models/llama-v3p1-70b-instruct', 'accounts/fireworks/models/llama-v3p1-8b-instruct', 'accounts/fireworks/models/mixtral-8x22b-instruct', 'accounts/fireworks/models/mixtral-8x7b-instruct'],
+        apiKeyUrl: 'https://fireworks.ai/account/api-keys'
+    },
+    'Perplexity': {
+        models: ['llama-3.1-sonar-large-128k-online', 'llama-3.1-sonar-small-128k-online', 'llama-3.1-sonar-huge-128k-online', 'llama-3.1-sonar-large-128k-chat', 'llama-3.1-sonar-small-128k-chat'],
+        apiKeyUrl: 'https://www.perplexity.ai/settings/api'
+    }
+};
+
 // ═══════════════════════════════════════════════════════════════════════════════
 //                               服务层 - ApiService
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -582,6 +638,25 @@ class SettingsPage extends PageController {
             const input = document.getElementById('edit-preset-key');
             if (input) input.type = input.type === 'password' ? 'text' : 'password';
         });
+
+        // 监听预设名称输入，动态更新模型列表
+        bindGlobal('#edit-preset-name', 'input', (e) => {
+            this._updateModalMetadata(e.target.value);
+        });
+
+        // 监听模型选择变化，显示/隐藏自定义输入
+        bindGlobal('#edit-preset-model-select', 'change', (e) => {
+            const customInput = document.getElementById('edit-preset-model-custom');
+            if (customInput) {
+                if (e.target.value === '__custom__') {
+                    customInput.style.display = 'block';
+                    customInput.focus();
+                } else {
+                    customInput.style.display = 'none';
+                    customInput.value = '';
+                }
+            }
+        });
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -836,7 +911,6 @@ class SettingsPage extends PageController {
         // 填充数据
         setGlobal('edit-preset-original-name', isNew ? '' : preset.name);
         setGlobal('edit-preset-name', isNew ? '' : preset.name);
-        setGlobal('edit-preset-model', isNew ? '' : (preset.model || ''));
         setGlobal('edit-preset-alias', isNew ? '' : (preset.alias || ''));
         setGlobal('edit-preset-key', ''); // Key 不回显
 
@@ -850,9 +924,91 @@ class SettingsPage extends PageController {
             }
         }
 
+        // 更新元数据（模型列表和 Help Link）
+        const nameToMatch = isNew ? '' : preset.name;
+        const currentModel = isNew ? '' : (preset.model || '');
+        this._updateModalMetadata(nameToMatch, currentModel);
+
         // 打开模态框
         const modal = document.getElementById('preset-modal');
         if (modal) modal.classList.add('active');
+    }
+
+    _updateModalMetadata(presetName, currentModel = '') {
+        const selectElem = document.getElementById('edit-preset-model-select');
+        const customInput = document.getElementById('edit-preset-model-custom');
+        const helpContainer = document.getElementById('api-key-help');
+        const helpLink = helpContainer?.querySelector('a');
+
+        if (!selectElem || !helpContainer || !helpLink) return;
+
+        // 清空 select 并添加默认选项
+        selectElem.innerHTML = '<option value="">-- 选择模型 --</option>';
+
+        // 模糊匹配预设名称
+        let matchedKey = null;
+
+        if (presetName) {
+            if (PROVIDER_METADATA[presetName]) {
+                matchedKey = presetName;
+            } else {
+                const lowerName = presetName.toLowerCase();
+                matchedKey = Object.keys(PROVIDER_METADATA).find(k =>
+                    k.toLowerCase() === lowerName || lowerName.includes(k.toLowerCase())
+                );
+            }
+        }
+
+        let modelFoundInList = false;
+
+        if (matchedKey) {
+            const meta = PROVIDER_METADATA[matchedKey];
+            console.log(`[Settings] 匹配到预设: ${matchedKey}, 模型数量: ${meta.models?.length || 0}`);
+
+            // 填充模型选项
+            if (meta.models) {
+                meta.models.forEach(m => {
+                    const option = document.createElement('option');
+                    option.value = m;
+                    option.textContent = m;
+                    if (m === currentModel) {
+                        option.selected = true;
+                        modelFoundInList = true;
+                    }
+                    selectElem.appendChild(option);
+                });
+            }
+
+            // 更新 API Key 获取链接
+            if (meta.apiKeyUrl) {
+                helpLink.href = meta.apiKeyUrl;
+                helpContainer.style.display = 'block';
+            } else {
+                helpContainer.style.display = 'none';
+            }
+        } else {
+            helpContainer.style.display = 'none';
+        }
+
+        // 添加 "自定义" 选项
+        const customOption = document.createElement('option');
+        customOption.value = '__custom__';
+        customOption.textContent = '✎ 自定义模型...';
+        selectElem.appendChild(customOption);
+
+        // 如果当前模型不在列表中，显示自定义输入框
+        if (currentModel && !modelFoundInList) {
+            selectElem.value = '__custom__';
+            if (customInput) {
+                customInput.style.display = 'block';
+                customInput.value = currentModel;
+            }
+        } else {
+            if (customInput) {
+                customInput.style.display = 'none';
+                customInput.value = '';
+            }
+        }
     }
 
     _closeModal() {
@@ -865,9 +1021,13 @@ class SettingsPage extends PageController {
 
         const originalName = getGlobal('edit-preset-original-name');
         const newName = getGlobal('edit-preset-name');
-        const model = getGlobal('edit-preset-model');
         const alias = getGlobal('edit-preset-alias');
         const key = getGlobal('edit-preset-key');
+
+        // 获取模型：如果选择了自定义，则从自定义输入框获取，否则从 select 获取
+        const selectValue = getGlobal('edit-preset-model-select');
+        const customValue = getGlobal('edit-preset-model-custom');
+        const model = (selectValue === '__custom__') ? customValue : selectValue;
 
         if (!newName || !model) {
             Toast.warning('预设名称和模型不能为空');

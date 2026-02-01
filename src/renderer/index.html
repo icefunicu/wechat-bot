@@ -565,7 +565,11 @@
                     </div>
                     <div class="form-group">
                         <label class="form-label">模型 (Model)</label>
-                        <input type="text" class="form-input" id="edit-preset-model" placeholder="例如: gpt-4o-mini">
+                        <select class="form-input" id="edit-preset-model-select">
+                            <option value="">-- 选择模型 --</option>
+                        </select>
+                        <input type="text" class="form-input" id="edit-preset-model-custom" placeholder="输入自定义模型名称"
+                            style="display: none; margin-top: 8px;">
                     </div>
                     <div class="form-group">
                         <label class="form-label">别名 (Alias)</label>
@@ -583,6 +587,10 @@
                             </button>
                         </div>
                         <span class="form-label" style="font-size: 11px; margin-top: 4px;">留空则保持原有 Key 不变</span>
+                        <div id="api-key-help" style="font-size: 11px; margin-top: 4px; display: none;">
+                            <a href="#" target="_blank" style="color: var(--primary-color); text-decoration: none;">获取
+                                API Key &rarr;</a>
+                        </div>
                     </div>
                 </div>
             </div>
