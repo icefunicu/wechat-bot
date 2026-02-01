@@ -3,9 +3,9 @@ chcp 65001 >nul
 setlocal EnableDelayedExpansion
 
 echo.
-echo ╔══════════════════════════════════════════════════════════════╗
-echo ║           🤖 微信AI助手 - 构建脚本                          ║
-echo ╚══════════════════════════════════════════════════════════════╝
+echo ==============================================================
+echo            WeChat AI Assistant - Build Script
+echo ==============================================================
 echo.
 
 :: 获取项目根目录
@@ -68,11 +68,10 @@ if not exist "backend-dist\wechat-bot-backend\wechat-bot-backend.exe" (
         --specpath build ^
         --noconfirm ^
         --console ^
-        --add-data "web\templates;web\templates" ^
         --add-data "data;data" ^
         --hidden-import wxauto ^
-        --hidden-import flask ^
-        --hidden-import flask_socketio ^
+        --hidden-import quart ^
+        --hidden-import hypercorn ^
         --hidden-import openai ^
         --hidden-import httpx ^
         --collect-all wxauto ^
@@ -80,8 +79,7 @@ if not exist "backend-dist\wechat-bot-backend\wechat-bot-backend.exe" (
     
     if %ERRORLEVEL% neq 0 (
         echo ❌ PyInstaller 打包失败
-        echo    请确保已安装 PyInstaller: pip install pyinstaller
-        pause
+        echo    请确保已安装 PyInstaller: pip install -r requirements.txt
         exit /b 1
     )
 )
@@ -93,19 +91,17 @@ call npm run build
 
 if %ERRORLEVEL% neq 0 (
     echo ❌ Electron 构建失败
-    pause
     exit /b 1
 )
 
 echo.
-echo ╔══════════════════════════════════════════════════════════════╗
-echo ║                    ✅ 构建完成！                             ║
-echo ╚══════════════════════════════════════════════════════════════╝
+echo ==============================================================
+echo                    Build Complete!
+echo ==============================================================
 echo.
 echo 输出目录: %PROJECT_ROOT%dist\
 echo.
 
 :: 打开输出目录
-explorer dist
+if exist dist explorer dist
 
-pause

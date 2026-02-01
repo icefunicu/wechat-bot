@@ -32,6 +32,7 @@
 - `python run.py check`: check environment and dependencies.
 - `python run.py setup`: run configuration wizard.
 - `python -m unittest discover -s tests`: run unit tests.
+- `.\build.bat`: build the project into a Windows executable installer (dist/).
 - The app targets Windows + WeChat PC 3.9.x (4.x not supported). Keep the client logged in and running.
 - `backend/config.py` changes are polled and hot-reloaded; logic changes require a restart.
 
