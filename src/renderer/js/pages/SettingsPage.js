@@ -190,7 +190,7 @@ export class SettingsPage extends PageController {
         } catch (error) {
             console.error('加载配置异常:', error);
             this.$('#preset-list').innerHTML = '<div class="empty-state error">加载异常，请检查服务</div>';
-            toast.error('加载配置异常');
+            toast.error(toast.getErrorMessage(error, '加载配置异常'));
         }
     }
 
@@ -285,7 +285,7 @@ export class SettingsPage extends PageController {
                          }
                      } catch (e) {
                          console.error(e);
-                         toast.error('连接测试异常');
+                         toast.error(toast.getErrorMessage(e, '连接测试异常'));
                          if (pingResult) {
                              pingResult.textContent = '连接异常';
                              pingResult.className = 'ping-result error';
@@ -349,7 +349,7 @@ export class SettingsPage extends PageController {
             }
         } catch (error) {
             console.error('保存配置异常:', error);
-            toast.error('保存配置异常');
+            toast.error(toast.getErrorMessage(error, '保存配置异常'));
         }
     }
 
@@ -420,7 +420,7 @@ export class SettingsPage extends PageController {
                             await this._activatePreset(name);
                         } catch (e) {
                             console.error('激活预设失败:', e);
-                            toast.error('激活预设异常');
+                            toast.error(toast.getErrorMessage(e, '激活预设异常'));
                             // 恢复按钮状态
                             btnActivate.disabled = false;
                             btnActivate.innerHTML = originalHtml;
@@ -713,7 +713,7 @@ export class SettingsPage extends PageController {
             console.error('切换预设异常:', error);
             // 如果是主动抛出的错误，可能已经 toast 过了，但这里统一处理也没事
             if (!error.message || !error.message.includes('切换失败')) {
-                toast.error('切换预设操作发生错误');
+                toast.error(toast.getErrorMessage(error, '切换预设操作发生错误'));
             }
             throw error; // 继续抛出，让按钮点击事件捕获
         }

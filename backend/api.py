@@ -384,12 +384,22 @@ async def get_logs():
         lines_count = request.args.get('lines', 500, type=int)
         
         def _read_logs():
-            # 简单读取最后 N 行 (对于大文件可能需要优化，但日志轮转已限制了大小)
-            with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
-                lines = f.readlines()
-                # 过滤空行
-                lines = [line.strip() for line in lines if line.strip()]
-                return lines[-lines_count:]
+            if lines_count <= 0:
+                return []
+            with open(log_file, 'rb') as f:
+                f.seek(0, os.SEEK_END)
+                end = f.tell()
+                buffer = b''
+                lines = []
+                chunk_size = 8192
+                while end > 0 and len(lines) <= lines_count:
+                    read_size = min(chunk_size, end)
+                    end -= read_size
+                    f.seek(end)
+                    buffer = f.read(read_size) + buffer
+                    lines = buffer.splitlines()
+                decoded = [line.decode('utf-8', errors='replace').strip() for line in lines if line.strip()]
+                return decoded[-lines_count:]
 
         logs = await asyncio.to_thread(_read_logs)
         return jsonify({'success': True, 'logs': logs})

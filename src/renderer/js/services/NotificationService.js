@@ -87,6 +87,13 @@ class NotificationService {
         this.show(message, 'info', duration);
     }
 
+    getErrorMessage(error, fallback = '操作失败') {
+        if (!error) return fallback;
+        if (typeof error === 'string') return error;
+        if (error.message) return error.message;
+        return fallback;
+    }
+
     /**
      * 获取 SVG 图标
      */

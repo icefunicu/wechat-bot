@@ -53,6 +53,13 @@ class BotManager:
             'today_tokens': 0,
             'total_replies': 0
         }
+
+        self._status_cache: Optional[Dict[str, Any]] = None
+        self._status_cache_time: float = 0.0
+        self._status_cache_ttl: float = 0.5
+        self._stats_cache: Optional[Dict[str, Any]] = None
+        self._stats_cache_time: float = 0.0
+        self._stats_cache_ttl: float = 2.0
         
         # 共享组件
         self.memory_manager = None
@@ -116,6 +123,7 @@ class BotManager:
                 self.is_running = True
                 self.is_paused = False
                 self.start_time = time.time()
+                self._invalidate_status_cache()
                 
                 logger.info("机器人启动成功")
                 return {'success': True, 'message': '机器人已启动'}
@@ -125,6 +133,7 @@ class BotManager:
                 self.is_running = False
                 self.bot = None
                 self.task = None
+                self._invalidate_status_cache()
                 return {'success': False, 'message': f'启动失败: {str(e)}'}
     
     async def _run_bot(self):
@@ -138,6 +147,7 @@ class BotManager:
         finally:
             self.is_running = False
             self.start_time = None
+            self._invalidate_status_cache()
             logger.info("机器人已停止")
     
     async def stop(self) -> Dict[str, Any]:
@@ -177,6 +187,7 @@ class BotManager:
                 self.is_running = False
                 self.is_paused = False
                 self.start_time = None
+                self._invalidate_status_cache()
                 
                 logger.info("机器人停止成功")
                 return {'success': True, 'message': '机器人已停止'}
@@ -194,6 +205,7 @@ class BotManager:
             return {'success': False, 'message': '机器人已暂停'}
         
         self.is_paused = True
+        self._invalidate_status_cache()
         
         # 通知 bot 暂停（如果支持）
         if self.bot and hasattr(self.bot, 'pause'):
@@ -211,6 +223,7 @@ class BotManager:
             return {'success': False, 'message': '机器人未暂停'}
         
         self.is_paused = False
+        self._invalidate_status_cache()
         
         # 通知 bot 恢复（如果支持）
         if self.bot and hasattr(self.bot, 'resume'):
@@ -245,6 +258,15 @@ class BotManager:
 
     def get_usage(self) -> Dict[str, Any]:
         """获取使用统计"""
+        return self._get_stats()
+
+    def _get_stats(self) -> Dict[str, Any]:
+        import time
+
+        now = time.time()
+        if self._stats_cache and (now - self._stats_cache_time) < self._stats_cache_ttl:
+            return dict(self._stats_cache)
+
         stats = self.stats.copy()
         if self.bot and hasattr(self.bot, 'get_stats'):
             try:
@@ -253,7 +275,10 @@ class BotManager:
                     stats.update(bot_stats)
             except Exception:
                 pass
-        return stats
+
+        self._stats_cache = stats
+        self._stats_cache_time = now
+        return dict(stats)
 
     
     def get_status(self) -> Dict[str, Any]:
@@ -264,6 +289,10 @@ class BotManager:
             状态信息字典
         """
         import time
+
+        now = time.time()
+        if self._status_cache and (now - self._status_cache_time) < self._status_cache_ttl:
+            return dict(self._status_cache)
         
         uptime = '--'
         if self.is_running and self.start_time:
@@ -273,16 +302,9 @@ class BotManager:
             uptime = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
         
         # 尝试从 bot 获取统计数据
-        stats = self.stats.copy()
-        if self.bot and hasattr(self.bot, 'get_stats'):
-            try:
-                bot_stats = self.bot.get_stats()
-                if bot_stats:
-                    stats.update(bot_stats)
-            except Exception:
-                pass
+        stats = self._get_stats()
         
-        return {
+        status = {
             'running': self.is_running,
             'is_paused': self.is_paused,
             'uptime': uptime,
@@ -290,6 +312,15 @@ class BotManager:
             'today_tokens': stats.get('today_tokens', 0),
             'total_replies': stats.get('total_replies', 0)
         }
+        self._status_cache = status
+        self._status_cache_time = now
+        return dict(status)
+
+    def _invalidate_status_cache(self) -> None:
+        self._status_cache = None
+        self._status_cache_time = 0.0
+        self._stats_cache = None
+        self._stats_cache_time = 0.0
 
 
 # 便捷访问函数

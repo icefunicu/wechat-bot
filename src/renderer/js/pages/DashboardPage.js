@@ -10,6 +10,7 @@ import { toast } from '../services/NotificationService.js';
 export class DashboardPage extends PageController {
     constructor() {
         super('DashboardPage', 'page-dashboard');
+        this._lastStats = null;
     }
 
     async onInit() {
@@ -102,7 +103,7 @@ export class DashboardPage extends PageController {
             // 延迟触发状态刷新
             setTimeout(() => this.emit(Events.BOT_STATUS_CHANGE, {}), 1000);
         } catch (error) {
-            toast.error('操作失败: ' + error.message);
+            toast.error(toast.getErrorMessage(error, '操作失败'));
         } finally {
             btn.disabled = false;
         }
@@ -121,7 +122,7 @@ export class DashboardPage extends PageController {
 
             this.emit(Events.BOT_STATUS_CHANGE, {});
         } catch (error) {
-            toast.error('操作失败: ' + error.message);
+            toast.error(toast.getErrorMessage(error, '操作失败'));
         }
     }
 
@@ -133,7 +134,7 @@ export class DashboardPage extends PageController {
 
             setTimeout(() => this.emit(Events.BOT_STATUS_CHANGE, {}), 2000);
         } catch (error) {
-            toast.error('重启失败: ' + error.message);
+            toast.error(toast.getErrorMessage(error, '重启失败'));
         }
     }
 
@@ -271,15 +272,31 @@ export class DashboardPage extends PageController {
      * 更新统计数据
      */
     updateStats(stats) {
+        const nextStats = {
+            uptime: stats.uptime || '--',
+            today_replies: stats.today_replies ?? 0,
+            today_tokens: stats.today_tokens ?? 0,
+            total_replies: stats.total_replies ?? 0
+        };
         const uptimeElem = this.$('#stat-uptime');
         const todayRepliesElem = this.$('#stat-today-replies');
         const todayTokensElem = this.$('#stat-today-tokens');
         const totalRepliesElem = this.$('#stat-total-replies');
 
-        if (uptimeElem) uptimeElem.textContent = stats.uptime || '--';
-        if (todayRepliesElem) todayRepliesElem.textContent = this._formatNumber(stats.today_replies);
-        if (todayTokensElem) todayTokensElem.textContent = this._formatTokens(stats.today_tokens);
-        if (totalRepliesElem) totalRepliesElem.textContent = this._formatNumber(stats.total_replies);
+        if (!this._lastStats || this._lastStats.uptime !== nextStats.uptime) {
+            if (uptimeElem) uptimeElem.textContent = nextStats.uptime;
+        }
+        if (!this._lastStats || this._lastStats.today_replies !== nextStats.today_replies) {
+            if (todayRepliesElem) todayRepliesElem.textContent = this._formatNumber(nextStats.today_replies);
+        }
+        if (!this._lastStats || this._lastStats.today_tokens !== nextStats.today_tokens) {
+            if (todayTokensElem) todayTokensElem.textContent = this._formatTokens(nextStats.today_tokens);
+        }
+        if (!this._lastStats || this._lastStats.total_replies !== nextStats.total_replies) {
+            if (totalRepliesElem) totalRepliesElem.textContent = this._formatNumber(nextStats.total_replies);
+        }
+
+        this._lastStats = nextStats;
     }
 
     _formatNumber(value) {

@@ -18,7 +18,8 @@ class StateManager {
             currentPage: 'dashboard',
             // 日志设置
             logs: {
-                autoScroll: true
+                autoScroll: true,
+                autoRefresh: true
             },
             // 刷新定时器
             intervals: {
@@ -73,6 +74,9 @@ class StateManager {
         }
 
         const oldValue = target[lastKey];
+        if (Object.is(oldValue, value)) {
+            return;
+        }
         target[lastKey] = value;
 
         // 记录历史

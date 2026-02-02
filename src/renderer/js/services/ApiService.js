@@ -8,6 +8,7 @@ class ApiService {
     constructor() {
         this.baseUrl = 'http://localhost:5000';
         this.initialized = false;
+        this.defaultTimeoutMs = 8000;
     }
 
     /**
@@ -33,11 +34,12 @@ class ApiService {
         }
 
         const url = `${this.baseUrl}${endpoint}`;
+        const { timeoutMs, ...fetchOptions } = options;
         const config = {
             headers: {
                 'Content-Type': 'application/json',
             },
-            ...options,
+            ...fetchOptions,
         };
 
         if (config.body && typeof config.body === 'object') {
@@ -46,21 +48,74 @@ class ApiService {
 
         let lastError = null;
         for (let attempt = 0; attempt <= retries; attempt++) {
+            const controller = new AbortController();
+            const timeout = timeoutMs ?? this.defaultTimeoutMs;
+            const timer = setTimeout(() => controller.abort(), timeout);
             try {
-                const response = await fetch(url, config);
-                const data = await response.json();
-                return data;
+                const response = await fetch(url, { ...config, signal: controller.signal });
+                clearTimeout(timer);
+                const data = await this._parseResponseData(response);
+                if (response.ok) {
+                    return data ?? {};
+                }
+                throw this._createHttpError(response.status, data, endpoint);
             } catch (error) {
-                console.error(`[ApiService] 请求失败 (尝试 ${attempt + 1}/${retries + 1}): ${endpoint}`, error);
-                lastError = error;
+                clearTimeout(timer);
+                const normalized = this._normalizeError(error, endpoint);
+                console.error(`[ApiService] 请求失败 (尝试 ${attempt + 1}/${retries + 1}): ${endpoint}`, normalized);
+                lastError = normalized;
+                if (normalized?.status >= 400 && normalized?.status < 500) {
+                    throw normalized;
+                }
                 if (attempt < retries) {
-                    // 等待一段时间后重试
                     await new Promise(resolve => setTimeout(resolve, 1000));
                 }
             }
         }
 
         throw lastError;
+    }
+
+    async _parseResponseData(response) {
+        const contentType = response.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+            return response.json();
+        }
+        const text = await response.text();
+        return text ? { message: text } : null;
+    }
+
+    _createHttpError(status, data, endpoint) {
+        const message = this._formatHttpErrorMessage(status, data);
+        const error = new Error(message);
+        error.status = status;
+        error.data = data;
+        error.endpoint = endpoint;
+        error.code = 'http_error';
+        return error;
+    }
+
+    _formatHttpErrorMessage(status, data) {
+        const detail = data?.message ? `：${data.message}` : '';
+        if (status === 401 || status === 403) return `权限验证失败${detail}`;
+        if (status === 404) return `接口不存在${detail}`;
+        if (status === 429) return `请求过于频繁${detail}`;
+        if (status >= 500) return `服务端异常${detail}`;
+        return `请求失败(${status})${detail}`;
+    }
+
+    _normalizeError(error, endpoint) {
+        if (error?.name === 'AbortError') {
+            const timeoutError = new Error('请求超时，请稍后重试');
+            timeoutError.code = 'timeout';
+            timeoutError.endpoint = endpoint;
+            return timeoutError;
+        }
+        if (error?.code === 'http_error') return error;
+        const networkError = new Error('网络异常或服务不可用');
+        networkError.code = 'network';
+        networkError.endpoint = endpoint;
+        return networkError;
     }
 
     // ═══════════════════════════════════════════════════════════════════════

@@ -35,7 +35,14 @@ class App {
         this.currentPage = null;
 
         // 状态刷新定时器
-        this._statusInterval = null;
+        this._statusTimer = null;
+        this._statusRefreshing = false;
+        this._statusFailureCount = 0;
+        this._statusBaseIntervalMs = 5000;
+        this._statusMaxIntervalMs = 30000;
+        this._backendStartAttempted = false;
+        this._statusPausedByVisibility = false;
+        this._lastStatusSignature = null;
     }
 
     /**
@@ -101,6 +108,27 @@ class App {
         }
         stateManager.set('bot.connected', connected);
         this._updateConnectionStatus();
+        if (!connected && window.electronAPI?.startBackend && !this._backendStartAttempted) {
+            this._backendStartAttempted = true;
+            this._startBackendWithFeedback();
+        }
+    }
+
+    async _startBackendWithFeedback() {
+        try {
+            notificationService.info('后端未连接，正在尝试启动...');
+            await window.electronAPI.startBackend();
+            await new Promise(resolve => setTimeout(resolve, 1200));
+            await this._checkBackendConnection();
+            if (!stateManager.get('bot.connected')) {
+                notificationService.error('后端启动失败，请检查环境或日志');
+            } else {
+                notificationService.success('后端已连接');
+            }
+        } catch (error) {
+            console.error('[App] 启动后端失败:', error);
+            notificationService.error('后端启动失败，请检查环境或日志');
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -149,6 +177,23 @@ class App {
         // 监听状态刷新事件
         eventBus.on(Events.BOT_STATUS_CHANGE, () => {
             this._refreshStatus();
+        });
+
+        document.getElementById('status-badge')?.addEventListener('click', () => {
+            if (!window.electronAPI?.startBackend) return;
+            const connected = stateManager.get('bot.connected');
+            if (connected) return;
+            this._startBackendWithFeedback();
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) {
+                this._statusPausedByVisibility = true;
+                this._scheduleNextStatusRefresh(null);
+            } else if (this._statusPausedByVisibility) {
+                this._statusPausedByVisibility = false;
+                this._scheduleNextStatusRefresh(0);
+            }
         });
     }
 
@@ -247,6 +292,8 @@ class App {
     // ═══════════════════════════════════════════════════════════════════════
 
     async _refreshStatus() {
+        if (this._statusRefreshing) return;
+        this._statusRefreshing = true;
         try {
             const status = await apiService.getStatus();
 
@@ -258,18 +305,33 @@ class App {
             });
 
             // 更新仪表盘统计
-            if (this.pages.dashboard) {
+            const statusSignature = JSON.stringify(status);
+            if (this.pages.dashboard && statusSignature !== this._lastStatusSignature) {
                 this.pages.dashboard.updateStats(status);
+                this._lastStatusSignature = statusSignature;
             }
 
             // 更新连接状态
             this._updateConnectionStatus();
+            this._statusFailureCount = 0;
 
         } catch (error) {
             console.error('[App] 刷新状态失败:', error);
             stateManager.set('bot.connected', false);
             this._updateConnectionStatus();
+            this._statusFailureCount += 1;
+        } finally {
+            this._statusRefreshing = false;
+            const nextInterval = this._getNextStatusIntervalMs();
+            this._scheduleNextStatusRefresh(nextInterval);
         }
+    }
+
+    _getNextStatusIntervalMs() {
+        if (this._statusFailureCount <= 0) return this._statusBaseIntervalMs;
+        const backoff = this._statusBaseIntervalMs * Math.pow(2, this._statusFailureCount);
+        const jitter = Math.floor(Math.random() * 500);
+        return Math.min(this._statusMaxIntervalMs, backoff + jitter);
     }
 
     _updateConnectionStatus() {
@@ -301,8 +363,18 @@ class App {
     }
 
     _startStatusRefresh() {
-        // 每 5 秒刷新状态
-        this._statusInterval = setInterval(() => this._refreshStatus(), 5000);
+        this._scheduleNextStatusRefresh(0);
+    }
+
+    _scheduleNextStatusRefresh(delayMs) {
+        if (this._statusTimer) {
+            clearTimeout(this._statusTimer);
+            this._statusTimer = null;
+        }
+        if (delayMs === null || document.hidden) {
+            return;
+        }
+        this._statusTimer = setTimeout(() => this._refreshStatus(), delayMs);
     }
 }
 
