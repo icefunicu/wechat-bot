@@ -54,6 +54,9 @@ class BotManager:
             'total_replies': 0
         }
         
+        # 共享组件
+        self.memory_manager = None
+        
         # 配置路径
         self.config_path = os.path.join(
             os.path.dirname(__file__), 'config.py'
@@ -68,6 +71,15 @@ class BotManager:
             cls._instance = cls()
         return cls._instance
     
+    def get_memory_manager(self):
+        """获取或初始化共享记忆管理器"""
+        if self.memory_manager is None:
+            from backend.config import CONFIG
+            from backend.core.memory import MemoryManager
+            db_path = CONFIG.get('bot', {}).get('sqlite_db_path', 'data/chat_memory.db')
+            self.memory_manager = MemoryManager(db_path)
+        return self.memory_manager
+
     async def start(self, config_path: Optional[str] = None) -> Dict[str, Any]:
         """
         启动机器人
@@ -93,7 +105,7 @@ class BotManager:
                 self.stop_event.clear()
                 
                 # 创建机器人实例
-                self.bot = WeChatBot(path)
+                self.bot = WeChatBot(path, memory_manager=self.get_memory_manager())
                 
                 # 注入停止事件（让 bot 可以检查是否需要停止）
                 self.bot._stop_event = self.stop_event

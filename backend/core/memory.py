@@ -23,6 +23,7 @@ import os
 import sqlite3
 import threading
 import time
+import copy
 from typing import Any, Dict, Iterable, List, Optional
 
 
@@ -84,7 +85,7 @@ class MemoryManager:
         db_dir = os.path.dirname(self.db_path)
         if db_dir:
             os.makedirs(db_dir, exist_ok=True)
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._ttl_sec = self._normalize_ttl(ttl_sec)
@@ -146,6 +147,10 @@ class MemoryManager:
             )
             # 启用 WAL 模式提升并发性能
             self._conn.execute("PRAGMA journal_mode=WAL")
+            # 启用 synchronous = NORMAL (WAL模式下安全且更快)
+            self._conn.execute("PRAGMA synchronous = NORMAL")
+            # 将临时表存储在内存中
+            self._conn.execute("PRAGMA temp_store = MEMORY")
             # 启用内存映射 I/O 提升读取性能
             self._conn.execute("PRAGMA mmap_size=268435456")
             self._conn.commit()
@@ -325,7 +330,7 @@ class MemoryManager:
                     u.nickname, u.relationship
                 FROM chat_history h
                 LEFT JOIN user_profiles u ON h.wx_id = u.wx_id
-                ORDER BY h.created_at DESC
+                ORDER BY h.id DESC
                 LIMIT ?
             """
             rows = self._conn.execute(sql, (limit_val,)).fetchall()
@@ -357,8 +362,6 @@ class MemoryManager:
 
     def get_user_profile(self, wx_id: str) -> Dict[str, Any]:
         """获取用户画像，如果不存在则返回默认画像"""
-        import copy  # Lazy import to avoid top-level dependency change if not needed elsewhere
-        
         wx_id = str(wx_id).strip()
         if not wx_id:
             return copy.deepcopy(DEFAULT_USER_PROFILE)
@@ -445,17 +448,18 @@ class MemoryManager:
         fact = str(fact).strip()
         if not wx_id or not fact:
             return
-        profile = self.get_user_profile(wx_id)
-        facts = profile.get("context_facts", [])
-        if not isinstance(facts, list):
-            facts = []
-        # 避免重复
-        if fact not in facts:
-            facts.append(fact)
-            # 限制数量
-            if len(facts) > max_facts:
-                facts = facts[-max_facts:]
-            self.update_user_profile(wx_id, context_facts=facts)
+        with self._lock:
+            profile = self.get_user_profile(wx_id)
+            facts = profile.get("context_facts", [])
+            if not isinstance(facts, list):
+                facts = []
+            # 避免重复
+            if fact not in facts:
+                facts.append(fact)
+                # 限制数量
+                if len(facts) > max_facts:
+                    facts = facts[-max_facts:]
+                self.update_user_profile(wx_id, context_facts=facts)
 
     def update_emotion(
         self, wx_id: str, emotion: str, max_history: int = 10
@@ -465,16 +469,17 @@ class MemoryManager:
         emotion = str(emotion).strip().lower()
         if not wx_id or not emotion:
             return
-        profile = self.get_user_profile(wx_id)
-        history = profile.get("emotion_history", [])
-        if not isinstance(history, list):
-            history = []
-        history.append({"emotion": emotion, "timestamp": int(time.time())})
-        if len(history) > max_history:
-            history = history[-max_history:]
-        self.update_user_profile(
-            wx_id, last_emotion=emotion, emotion_history=history
-        )
+        with self._lock:
+            profile = self.get_user_profile(wx_id)
+            history = profile.get("emotion_history", [])
+            if not isinstance(history, list):
+                history = []
+            history.append({"emotion": emotion, "timestamp": int(time.time())})
+            if len(history) > max_history:
+                history = history[-max_history:]
+            self.update_user_profile(
+                wx_id, last_emotion=emotion, emotion_history=history
+            )
 
     def increment_message_count(self, wx_id: str) -> int:
         """增加用户消息计数并返回新值"""

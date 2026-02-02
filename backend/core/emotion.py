@@ -31,6 +31,7 @@
 from __future__ import annotations
 
 import re
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from functools import lru_cache
@@ -175,9 +176,9 @@ INTENSITY_MODIFIERS: Dict[str, int] = {
     "真的": 1, "真是": 1, "简直": 2, "完全": 2,
 }
 
-# 预编译：将关键词集合转为 frozenset 以加速查找
-_EMOTION_KEYWORDS_FROZEN: Dict[str, FrozenSet[str]] = {
-    emotion: frozenset(kw.lower() for kw in keywords)
+# 预编译：将关键词列表转为 tuple 以加速迭代（比 set 迭代更快）
+_EMOTION_KEYWORDS_TUPLE: Dict[str, Tuple[str, ...]] = {
+    emotion: tuple(kw.lower() for kw in keywords)
     for emotion, keywords in EMOTION_KEYWORDS.items()
 }
 
@@ -190,12 +191,15 @@ _NEUTRAL_RESULT = EmotionResult(
     suggested_tone=EMOTION_RESPONSE_GUIDE["neutral"],
 )
 
+# 预编译 Emoji 正则表达式
+_EMOJI_PATTERN = re.compile(r'[\U0001F300-\U0001F9FF]')
+
 
 def detect_emotion_keywords(text: str) -> EmotionResult:
     """
     基于关键词检测情绪。
     
-    优化：使用 frozenset 进行 O(1) 关键词查找，
+    优化：使用 tuple 进行迭代查找（比 set 更快），
     预分配结果避免重复对象创建。
     """
     if not text:
@@ -206,9 +210,9 @@ def detect_emotion_keywords(text: str) -> EmotionResult:
     # 使用列表推导式替代循环，更高效
     emotion_scores: Dict[str, Tuple[int, List[str]]] = {}
     
-    for emotion, keywords in EMOTION_KEYWORDS.items():
-        # 使用列表推导式一次性收集所有匹配
-        matched = [kw for kw in keywords if kw.lower() in text_lower]
+    for emotion, keywords in _EMOTION_KEYWORDS_TUPLE.items():
+        # 遍历 keywords，检查是否包含在 text 中
+        matched = [kw for kw in keywords if kw in text_lower]
         if matched:
             emotion_scores[emotion] = (len(matched), matched)
 
@@ -267,15 +271,20 @@ def get_emotion_analysis_prompt(message: str) -> str:
 
 def parse_emotion_ai_response(response: str) -> Optional[EmotionResult]:
     """解析 AI 返回的情感分析结果"""
-    import json as json_module
-
-    # 尝试提取 JSON
-    json_match = re.search(r'\{[^{}]*\}', response, re.DOTALL)
-    if not json_match:
-        return None
+    
+    # 尝试提取 JSON (支持嵌套结构)
+    # 查找第一个 { 和最后一个 }
+    start = response.find('{')
+    end = response.rfind('}')
+    
+    if start != -1 and end != -1 and end > start:
+        json_str = response[start : end + 1]
+    else:
+        # 如果没有找到大括号，尝试直接解析整个字符串
+        json_str = response
 
     try:
-        data = json_module.loads(json_match.group())
+        data = json.loads(json_str)
         emotion = str(data.get("emotion", "neutral")).lower()
         if emotion not in EMOTION_RESPONSE_GUIDE:
             emotion = "neutral"
@@ -297,7 +306,7 @@ def parse_emotion_ai_response(response: str) -> Optional[EmotionResult]:
             keywords_matched=[],
             suggested_tone=suggested_tone,
         )
-    except (json_module.JSONDecodeError, KeyError, ValueError, TypeError):
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError):
         return None
 
 
@@ -328,14 +337,13 @@ def parse_fact_extraction_response(
     response: str
 ) -> Tuple[List[str], Optional[str], List[str]]:
     """解析 AI 返回的事实提取结果"""
-    import json as json_module
-
+    
     json_match = re.search(r'\{[^{}]*\}', response, re.DOTALL)
     if not json_match:
         return [], None, []
 
     try:
-        data = json_module.loads(json_match.group())
+        data = json.loads(json_match.group())
         new_facts = data.get("new_facts", [])
         if not isinstance(new_facts, list):
             new_facts = []
@@ -353,7 +361,7 @@ def parse_fact_extraction_response(
         traits = [str(t).strip() for t in traits if str(t).strip()]
 
         return new_facts, relationship, traits
-    except (json_module.JSONDecodeError, KeyError, ValueError, TypeError):
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError):
         return [], None, []
 
 
@@ -419,11 +427,9 @@ def get_time_period(hour: Optional[int] = None) -> str:
 
 def get_time_context(hour: Optional[int] = None) -> Dict[str, str]:
     """获取时间相关的上下文信息"""
+    now = datetime.now()
     if hour is None:
-        now = datetime.now()
         hour = now.hour
-    else:
-        now = datetime.now()
 
     period = get_time_period(hour)
     weekday = now.weekday()
@@ -479,8 +485,6 @@ def analyze_conversation_style(messages: List[Dict[str, str]]) -> Dict[str, any]
     formal_count = 0
     emoji_count = 0
 
-    emoji_pattern = re.compile(r'[\U0001F300-\U0001F9FF]')
-
     for msg in user_messages:
         for marker in CONVERSATION_STYLES["casual"]["markers"]:
             if marker in msg:
@@ -488,7 +492,7 @@ def analyze_conversation_style(messages: List[Dict[str, str]]) -> Dict[str, any]
         for marker in CONVERSATION_STYLES["formal"]["markers"]:
             if marker in msg:
                 formal_count += 1
-        emoji_count += len(emoji_pattern.findall(msg))
+        emoji_count += len(_EMOJI_PATTERN.findall(msg))
 
     # 判断风格
     style = "balanced"

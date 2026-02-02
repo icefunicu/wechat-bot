@@ -48,20 +48,37 @@ def send_message(
     """
     发送文本消息，包含重试和错误处理逻辑。
     """
-    result = wx.SendMsg(
-        text,
-        chat_name,
-        exact=bool(bot_cfg.get("send_exact_match", False)),
-    )
-    ok, err_msg = parse_send_result(result)
-    if not ok and bot_cfg.get("send_fallback_current_chat", True):
-        logging.warning(
-            "发送失败，尝试当前聊天窗口重试 | 会话=%s",
+    # 简单的重试机制
+    retry_count = 2
+    last_error = None
+    
+    for attempt in range(retry_count):
+        result = wx.SendMsg(
+            text,
             chat_name,
+            exact=bool(bot_cfg.get("send_exact_match", False)),
+        )
+        ok, err_msg = parse_send_result(result)
+        
+        if ok:
+            return True, err_msg
+            
+        last_error = err_msg
+        if attempt < retry_count - 1:
+            logging.warning("发送消息失败，尝试重试 (%d/%d): %s", attempt + 1, retry_count, err_msg)
+            time.sleep(0.5)
+            
+    # 重试失败后，尝试回退到当前窗口
+    if bot_cfg.get("send_fallback_current_chat", True):
+        logging.warning(
+            "发送失败，尝试当前聊天窗口重试 | 会话=%s | 错误=%s",
+            chat_name, last_error
         )
         result = wx.SendMsg(text)
         ok, err_msg = parse_send_result(result)
-    return ok, err_msg
+        return ok, err_msg
+        
+    return False, last_error
 
 
 def send_quote_message(

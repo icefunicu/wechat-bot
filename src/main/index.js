@@ -1,126 +1,112 @@
 /**
  * 微信AI助手 - Electron 主进程
  * 
- * 负责：
- * - 创建和管理应用窗口
- * - 启动和管理 Python 后端进程
- * - 系统托盘功能
- * - IPC 通信
+ * 架构优化说明：
+ * 1. 采用 ready-to-show 事件机制，彻底消除白屏闪烁
+ * 2. 异步并行启动 Python 后端，不阻塞 UI 渲染
+ * 3. 模块化组织代码，提升可维护性
+ * 4. 增强的进程生命周期管理
  */
 
 const { app, BrowserWindow, Tray, Menu, ipcMain, shell, nativeImage } = require('electron');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, exec } = require('child_process');
 const http = require('http');
 const Store = require('electron-store');
 const iconv = require('iconv-lite');
 
-// 配置存储
+// ═══════════════════════════════════════════════════════════════════════════════
+//                               配置与全局状态
+// ═══════════════════════════════════════════════════════════════════════════════
+
 const store = new Store({
     defaults: {
         windowBounds: { width: 1200, height: 800 },
         startMinimized: false,
         autoStartBot: false,
         flaskPort: 5000,
-        isFirstRun: true
+        isFirstRun: true,
+        closeBehavior: 'ask'
     }
 });
 
-// 全局变量
-let mainWindow = null;
-let splashWindow = null;
-let tray = null;
-let pythonProcess = null;
-let isQuitting = false;
-
-// 开发模式检测
-const isDev = process.argv.includes('--dev');
-const FLASK_PORT = store.get('flaskPort');
-const FLASK_URL = `http://localhost:${FLASK_PORT}`;
+const GLOBAL_STATE = {
+    mainWindow: null,
+    splashWindow: null,
+    tray: null,
+    pythonProcess: null,
+    isQuitting: false,
+    isDev: process.argv.includes('--dev'),
+    flaskPort: store.get('flaskPort'),
+    get flaskUrl() { return `http://localhost:${this.flaskPort}`; }
+};
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//                               应用路径工具
+//                               工具函数
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * 获取资源路径（开发模式 vs 打包模式）
- */
-function getResourcePath(relativePath) {
-    if (isDev) {
-        // 开发模式：项目根目录
-        return path.join(__dirname, '..', '..', relativePath);
-    } else {
-        // 打包模式：extraResources 目录
-        return path.join(process.resourcesPath, relativePath);
-    }
-}
+const PathUtils = {
+    get resourcePath() {
+        return GLOBAL_STATE.isDev 
+            ? path.join(__dirname, '..', '..') 
+            : process.resourcesPath;
+    },
+    
+    get iconPath() {
+        return path.join(__dirname, '..', 'assets', 'icon.png');
+    },
 
-/**
- * 获取 Python 后端可执行文件路径
- */
-function getBackendPath() {
-    if (isDev) {
-        return null;
-    } else {
+    get backendExecutable() {
+        if (GLOBAL_STATE.isDev) return null;
         return path.join(process.resourcesPath, 'backend', 'wechat-bot-backend.exe');
     }
-}
+};
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //                               Python 后端管理
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * 检查 Flask 服务是否在运行
- */
-function checkFlaskServer() {
-    return new Promise((resolve) => {
-        const req = http.get(`${FLASK_URL}/api/status`, (res) => {
-            resolve(res.statusCode === 200);
+const BackendManager = {
+    checkServer() {
+        return new Promise((resolve) => {
+            const req = http.get(`${GLOBAL_STATE.flaskUrl}/api/status`, (res) => {
+                resolve(res.statusCode === 200);
+            });
+            req.on('error', () => resolve(false));
+            req.setTimeout(2000, () => {
+                req.destroy();
+                resolve(false);
+            });
         });
-        req.on('error', () => resolve(false));
-        req.setTimeout(2000, () => {
-            req.destroy();
-            resolve(false);
-        });
-    });
-}
+    },
 
-/**
- * 启动 Python 后端
- */
-async function startPythonBackend() {
-    const isRunning = await checkFlaskServer();
-    if (isRunning) {
-        console.log('[Backend] Flask 服务已在运行');
-        return true;
-    }
+    async start() {
+        if (await this.checkServer()) {
+            console.log('[Backend] 服务已在运行');
+            return;
+        }
 
-    return new Promise((resolve, reject) => {
         let cmd, args, options;
 
-        if (isDev) {
-            // 开发模式：使用虚拟环境的 Python
-            const projectRoot = path.join(__dirname, '..', '..');
-            const venvPython = path.join(projectRoot, '.venv', 'Scripts', 'python.exe');
-
+        if (GLOBAL_STATE.isDev) {
+            const venvPython = path.join(PathUtils.resourcePath, '.venv', 'Scripts', 'python.exe');
             cmd = venvPython;
-            args = ['run.py', 'web'];
+            args = ['run.py', 'web', '--port', GLOBAL_STATE.flaskPort.toString()];
             options = {
-                cwd: projectRoot,
+                cwd: PathUtils.resourcePath,
                 env: {
                     ...process.env,
                     PYTHONUNBUFFERED: '1',
                     PYTHONIOENCODING: 'utf-8',
-                    PYTHONLEGACYWINDOWSSTDIO: '1' // 修复 Windows 下控制台乱码
+                    PYTHONLEGACYWINDOWSSTDIO: '1'
                 }
             };
         } else {
-            const backendPath = getBackendPath();
-            cmd = backendPath;
-            args = ['web'];
+            const exePath = PathUtils.backendExecutable;
+            cmd = exePath;
+            args = ['web', '--port', GLOBAL_STATE.flaskPort.toString()];
             options = {
-                cwd: path.dirname(backendPath),
+                cwd: path.dirname(exePath),
                 env: {
                     ...process.env,
                     PYTHONLEGACYWINDOWSSTDIO: '1'
@@ -128,244 +114,295 @@ async function startPythonBackend() {
             };
         }
 
-        console.log(`[Backend] 启动命令: ${cmd} ${args.join(' ')}`);
-        // 不设置 encoding: 'utf-8'，保持 buffer 格式以便手动解码
-        pythonProcess = spawn(cmd, args, options);
+        console.log(`[Backend] 启动: ${cmd} ${args.join(' ')}`);
+        
+        GLOBAL_STATE.pythonProcess = spawn(cmd, args, options);
+        this._setupProcessListeners(GLOBAL_STATE.pythonProcess);
+    },
 
-        // 处理输出流
-        pythonProcess.stdout.on('data', (data) => {
-            // 尝试使用 iconv-lite 解码，Windows 通常是 gbk，但也可能是 utf-8
-            // 这里我们先尝试 utf-8 (因为设置了 PYTHONIOENCODING=utf-8)
-            // 如果乱码持续，可能需要根据系统 locale 动态调整，或者后端强制输出 gbk
+    stop() {
+        const proc = GLOBAL_STATE.pythonProcess;
+        if (!proc) return Promise.resolve();
+        return new Promise((resolve) => {
+            let resolved = false;
+            const done = () => {
+                if (resolved) return;
+                resolved = true;
+                resolve();
+            };
+            console.log('[Backend] 正在停止...');
+            proc.once('exit', done);
+            proc.kill('SIGTERM');
+            const pid = proc.pid;
+            setTimeout(() => {
+                try { process.kill(pid, 0) && process.kill(pid, 'SIGKILL'); } catch (e) {}
+            }, 3000);
+            setTimeout(done, 3500);
+            GLOBAL_STATE.pythonProcess = null;
+        });
+    },
+
+    _setupProcessListeners(proc) {
+        proc.on('error', (err) => {
+            console.error(`[Backend Spawn Error] ${err.message}`);
+            GLOBAL_STATE.pythonProcess = null;
+        });
+
+        proc.stdout.on('data', (data) => {
             const str = iconv.decode(data, 'utf-8');
             console.log(`[Backend] ${str.trim()}`);
         });
 
-        pythonProcess.stderr.on('data', (data) => {
+        proc.stderr.on('data', (data) => {
             const str = iconv.decode(data, 'utf-8');
-            console.error(`[Backend Error] ${str.trim()}`);
+            console.error(`[Backend Err] ${str.trim()}`);
         });
 
-        pythonProcess.on('error', (err) => {
-            console.error('[Backend] 启动失败:', err);
-            reject(err);
+        proc.on('exit', (code) => {
+            console.log(`[Backend] 退出代码: ${code}`);
+            GLOBAL_STATE.pythonProcess = null;
         });
-
-        pythonProcess.on('exit', (code) => {
-            console.log(`[Backend] 进程退出，代码: ${code}`);
-            pythonProcess = null;
-        });
-
-        // 等待服务启动
-        let attempts = 0;
-        const maxAttempts = 60; // 增加超时时间到 60 秒
-
-        const checkInterval = setInterval(async () => {
-            attempts++;
-            const isUp = await checkFlaskServer();
-
-            if (isUp) {
-                clearInterval(checkInterval);
-                console.log('[Backend] Flask 服务已就绪');
-                resolve(true);
-            } else if (attempts >= maxAttempts) {
-                clearInterval(checkInterval);
-                console.error('[Backend] 服务启动超时');
-                reject(new Error('Flask 服务启动超时'));
-            }
-        }, 1000);
-    });
-}
-
-/**
- * 停止 Python 后端
- */
-function stopPythonBackend() {
-    if (pythonProcess) {
-        console.log('[Backend] 正在停止...');
-        pythonProcess.kill('SIGTERM');
-        setTimeout(() => {
-            if (pythonProcess) {
-                pythonProcess.kill('SIGKILL');
-            }
-        }, 5000);
     }
-}
+};
 
-// ═══════════════════════════════════════════════════════════════════════════════
-//                               启动画面
-// ═══════════════════════════════════════════════════════════════════════════════
-
-/**
- * 创建启动画面
- */
-function createSplashWindow() {
-    splashWindow = new BrowserWindow({
-        width: 400,
-        height: 300,
-        frame: false,
-        transparent: true,
-        resizable: false,
-        center: true,
-        skipTaskbar: true,
-        alwaysOnTop: true,
-        webPreferences: {
-            contextIsolation: true,
-            nodeIntegration: false
+async function requestAppClose(options = {}) {
+    const { showWindow } = options;
+    const win = GLOBAL_STATE.mainWindow;
+    const pref = store.get('closeBehavior') || 'ask';
+    if (pref === 'minimize') {
+        win?.hide();
+        return { action: 'minimize' };
+    }
+    if (pref === 'quit') {
+        GLOBAL_STATE.isQuitting = true;
+        if (GLOBAL_STATE.tray) {
+            GLOBAL_STATE.tray.destroy();
+            GLOBAL_STATE.tray = null;
         }
-    });
-
-    splashWindow.loadFile(path.join(__dirname, '..', 'renderer', 'splash.html'));
-}
-
-/**
- * 关闭启动画面并显示主窗口
- */
-function closeSplashAndShowMain() {
-    if (splashWindow) {
-        splashWindow.close();
-        splashWindow = null;
+        await BackendManager.stop();
+        app.quit();
+        return { action: 'quit' };
     }
-
-    if (mainWindow) {
-        mainWindow.show();
-        mainWindow.focus();
+    if (showWindow) {
+        win?.show();
+        win?.focus();
     }
+    win?.webContents.send('app-close-dialog');
+    return { action: 'ask' };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //                               窗口管理
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * 创建主窗口
- */
-function createMainWindow() {
-    const { width, height } = store.get('windowBounds');
+const WindowManager = {
+    createSplash() {
+        GLOBAL_STATE.splashWindow = new BrowserWindow({
+            width: 400,
+            height: 300,
+            frame: false,
+            transparent: true,
+            resizable: false,
+            center: true,
+            skipTaskbar: true,
+            alwaysOnTop: true,
+            webPreferences: { contextIsolation: true, nodeIntegration: false }
+        });
+        GLOBAL_STATE.splashWindow.loadFile(path.join(__dirname, '..', 'renderer', 'splash.html'));
+    },
 
-    mainWindow = new BrowserWindow({
-        width: width,
-        height: height,
-        minWidth: 900,
-        minHeight: 600,
-        title: '微信AI助手',
-        icon: path.join(__dirname, '..', 'assets', 'icon.png'),
-        backgroundColor: '#0A0A0F',
-        frame: false,
-        show: false,
-        webPreferences: {
-            preload: path.join(__dirname, '..', 'preload', 'index.js'),
-            contextIsolation: true,
-            nodeIntegration: false,
-            devTools: isDev
-        }
-    });
+    createMain() {
+        const { width, height } = store.get('windowBounds');
 
-    // 加载页面
-    mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+        GLOBAL_STATE.mainWindow = new BrowserWindow({
+            width, height,
+            minWidth: 900,
+            minHeight: 600,
+            title: '微信AI助手',
+            icon: PathUtils.iconPath,
+            backgroundColor: '#0A0A0F', // 关键：与 CSS 背景一致，防止白屏
+            frame: false,
+            show: false, // 关键：初始隐藏
+            webPreferences: {
+                preload: path.join(__dirname, '..', 'preload', 'index.js'),
+                contextIsolation: true,
+                nodeIntegration: false,
+                devTools: GLOBAL_STATE.isDev
+            }
+        });
 
-    // 保存窗口大小
-    mainWindow.on('resize', () => {
-        const bounds = mainWindow.getBounds();
-        store.set('windowBounds', { width: bounds.width, height: bounds.height });
-    });
+        GLOBAL_STATE.mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
 
-    // 关闭时最小化到托盘
-    mainWindow.on('close', (event) => {
-        if (!isQuitting) {
-            event.preventDefault();
-            mainWindow.hide();
-        }
-    });
+        this._setupMainListeners();
+        
+        // if (GLOBAL_STATE.isDev) GLOBAL_STATE.mainWindow.webContents.openDevTools();
+    },
 
-    // 开发模式打开 DevTools
-    if (isDev) {
-        mainWindow.webContents.openDevTools();
+    _setupMainListeners() {
+        const win = GLOBAL_STATE.mainWindow;
+
+        // 关键：原生级平滑启动
+        win.once('ready-to-show', () => {
+            // 给一个小延迟确保 CSS 渲染完成
+            setTimeout(() => {
+                if (GLOBAL_STATE.splashWindow) {
+                    GLOBAL_STATE.splashWindow.close();
+                    GLOBAL_STATE.splashWindow = null;
+                }
+                win.show();
+                win.focus();
+            }, 50); 
+        });
+
+        win.on('resize', () => {
+            const { width, height } = win.getBounds();
+            store.set('windowBounds', { width, height });
+        });
+
+        win.on('close', (event) => {
+            if (!GLOBAL_STATE.isQuitting) {
+                event.preventDefault();
+                requestAppClose({ showWindow: false });
+            }
+        });
+    },
+
+    createTray() {
+        const icon = nativeImage.createFromPath(PathUtils.iconPath);
+        GLOBAL_STATE.tray = new Tray(icon.resize({ width: 16, height: 16 }));
+        
+        const contextMenu = Menu.buildFromTemplate([
+            { label: '显示主窗口', click: () => GLOBAL_STATE.mainWindow?.show() },
+            { type: 'separator' },
+            { label: '启动机器人', click: () => GLOBAL_STATE.mainWindow?.webContents.send('tray-action', 'start-bot') },
+            { label: '停止机器人', click: () => GLOBAL_STATE.mainWindow?.webContents.send('tray-action', 'stop-bot') },
+            { type: 'separator' },
+            { label: '退出', click: () => {
+                requestAppClose({ showWindow: true });
+            }}
+        ]);
+
+        GLOBAL_STATE.tray.setToolTip('微信AI助手');
+        GLOBAL_STATE.tray.setContextMenu(contextMenu);
+        GLOBAL_STATE.tray.on('double-click', () => GLOBAL_STATE.mainWindow?.show());
     }
-}
-
-/**
- * 创建系统托盘
- */
-function createTray() {
-    const iconPath = path.join(__dirname, '..', 'assets', 'icon.png');
-    const icon = nativeImage.createFromPath(iconPath);
-
-    tray = new Tray(icon.resize({ width: 16, height: 16 }));
-
-    const contextMenu = Menu.buildFromTemplate([
-        {
-            label: '显示主窗口',
-            click: () => {
-                mainWindow.show();
-                mainWindow.focus();
-            }
-        },
-        { type: 'separator' },
-        {
-            label: '启动机器人',
-            click: () => {
-                mainWindow.webContents.send('tray-action', 'start-bot');
-            }
-        },
-        {
-            label: '停止机器人',
-            click: () => {
-                mainWindow.webContents.send('tray-action', 'stop-bot');
-            }
-        },
-        { type: 'separator' },
-        {
-            label: '退出',
-            click: () => {
-                isQuitting = true;
-                app.quit();
-            }
-        }
-    ]);
-
-    tray.setToolTip('微信AI助手');
-    tray.setContextMenu(contextMenu);
-
-    tray.on('double-click', () => {
-        mainWindow.show();
-        mainWindow.focus();
-    });
-}
+};
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//                               IPC 通信处理
+//                               IPC 通信
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function setupIPC() {
-    ipcMain.handle('get-flask-url', () => FLASK_URL);
-    ipcMain.handle('check-backend', async () => await checkFlaskServer());
-
+    ipcMain.handle('get-flask-url', () => GLOBAL_STATE.flaskUrl);
+    ipcMain.handle('check-backend', () => BackendManager.checkServer());
     ipcMain.handle('start-backend', async () => {
         try {
-            await startPythonBackend();
+            await BackendManager.start();
             return { success: true };
         } catch (err) {
             return { success: false, error: err.message };
         }
     });
-
-    ipcMain.handle('open-external', (event, url) => shell.openExternal(url));
-    ipcMain.handle('get-app-version', () => app.getVersion());
-    ipcMain.handle('minimize-to-tray', () => mainWindow.hide());
-
-    // 窗口控制
-    ipcMain.handle('window-minimize', () => mainWindow.minimize());
-    ipcMain.handle('window-maximize', () => {
-        if (mainWindow.isMaximized()) {
-            mainWindow.unmaximize();
+    
+    ipcMain.handle('open-external', (_, url) => {
+        if (!url || typeof url !== 'string') return;
+        // 简单安全检查：只允许 http/https/mailto
+        if (/^(https?|mailto):/i.test(url)) {
+            shell.openExternal(url);
         } else {
-            mainWindow.maximize();
+            console.warn(`Blocked unsafe URL: ${url}`);
         }
     });
-    ipcMain.handle('window-close', () => mainWindow.hide());
+    ipcMain.handle('get-app-version', () => app.getVersion());
 
-    // 首次运行检测
+    ipcMain.handle('open-wechat', async () => {
+        try {
+            // 尝试从注册表获取安装路径
+            const getInstallPath = () => new Promise((resolve) => {
+                exec('reg query "HKEY_CURRENT_USER\\Software\\Tencent\\WeChat" /v InstallPath', (err, stdout) => {
+                    if (err || !stdout) return resolve(null);
+                    const match = stdout.match(/InstallPath\s+REG_SZ\s+(.+)/);
+                    if (match && match[1]) {
+                        resolve(path.join(match[1].trim(), 'WeChat.exe'));
+                    } else {
+                        resolve(null);
+                    }
+                });
+            });
+
+            let wechatPath = await getInstallPath();
+            
+            if (!wechatPath) {
+                // 回退到常见路径
+                const commonPaths = [
+                    'C:\\Program Files (x86)\\Tencent\\WeChat\\WeChat.exe',
+                    'C:\\Program Files\\Tencent\\WeChat\\WeChat.exe',
+                    'D:\\Program Files (x86)\\Tencent\\WeChat\\WeChat.exe',
+                    'D:\\Program Files\\Tencent\\WeChat\\WeChat.exe'
+                ];
+                const fs = require('fs');
+                for (const p of commonPaths) {
+                    if (fs.existsSync(p)) {
+                        wechatPath = p;
+                        break;
+                    }
+                }
+            }
+
+            if (wechatPath) {
+                console.log(`[OpenWeChat] Opening WeChat at ${wechatPath}`);
+                shell.openPath(wechatPath); 
+                return { success: true };
+            } else {
+                // 最后的尝试：协议
+                console.log('[OpenWeChat] Path not found, trying protocol');
+                shell.openExternal('weixin://');
+                return { success: true, message: 'Attempted to open via protocol' };
+            }
+        } catch (e) {
+            console.error('[OpenWeChat] Error:', e);
+            return { success: false, error: e.message };
+        }
+    });
+
+    ipcMain.handle('minimize-to-tray', () => GLOBAL_STATE.mainWindow?.hide());
+
+    // 窗口控制
+    ipcMain.handle('window-minimize', () => GLOBAL_STATE.mainWindow?.minimize());
+    ipcMain.handle('window-maximize', () => {
+        const win = GLOBAL_STATE.mainWindow;
+        win?.isMaximized() ? win.unmaximize() : win.maximize();
+    });
+    ipcMain.handle('window-close', () => requestAppClose({ showWindow: false }));
+
+    ipcMain.handle('confirm-close-action', async (_, payload) => {
+        const { action, remember } = payload || {};
+        if (remember && (action === 'minimize' || action === 'quit')) {
+            store.set('closeBehavior', action);
+        }
+        if (action === 'minimize') {
+            GLOBAL_STATE.mainWindow?.hide();
+            return { success: true };
+        }
+        if (action === 'quit') {
+            GLOBAL_STATE.isQuitting = true;
+            if (GLOBAL_STATE.tray) {
+                GLOBAL_STATE.tray.destroy();
+                GLOBAL_STATE.tray = null;
+            }
+            await BackendManager.stop();
+            app.quit();
+            return { success: true };
+        }
+        return { success: false, message: 'invalid action' };
+    });
+
+    ipcMain.handle('reset-close-behavior', () => {
+        store.set('closeBehavior', 'ask');
+        return { success: true };
+    });
+
+    // 状态管理
     ipcMain.handle('is-first-run', () => store.get('isFirstRun'));
     ipcMain.handle('set-first-run-complete', () => {
         store.set('isFirstRun', false);
@@ -377,82 +414,43 @@ function setupIPC() {
 //                               应用生命周期
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// 单实例锁
-const gotTheLock = app.requestSingleInstanceLock();
-
-if (!gotTheLock) {
+if (!app.requestSingleInstanceLock()) {
     app.quit();
 } else {
     app.on('second-instance', () => {
-        if (mainWindow) {
-            if (mainWindow.isMinimized()) mainWindow.restore();
-            mainWindow.show();
-            mainWindow.focus();
+        const win = GLOBAL_STATE.mainWindow;
+        if (win) {
+            if (win.isMinimized()) win.restore();
+            win.show();
+            win.focus();
         }
     });
+
+    app.whenReady().then(() => {
+        // 1. 先显示启动画面
+        WindowManager.createSplash();
+
+        // 2. 并行启动后端 (不阻塞)
+        BackendManager.start().catch(err => console.error('Backend start error:', err));
+
+        // 3. 设置 IPC
+        setupIPC();
+
+        // 4. 创建主窗口 (后台加载，ready-to-show 时自动切换)
+        WindowManager.createMain();
+        WindowManager.createTray();
+    });
+
+    app.on('before-quit', () => {
+        GLOBAL_STATE.isQuitting = true;
+        BackendManager.stop();
+    });
+
+    app.on('window-all-closed', () => {
+        // 保持托盘运行
+    });
+
+    app.on('activate', () => {
+        if (BrowserWindow.getAllWindows().length === 0) WindowManager.createMain();
+    });
 }
-
-// 应用就绪
-app.whenReady().then(async () => {
-    // 创建启动画面
-    createSplashWindow();
-
-    // 设置 IPC
-    setupIPC();
-
-    // 创建主窗口（但不显示）
-    createMainWindow();
-    createTray();
-
-    // 启动 Python 后端 (带超时机制)
-    try {
-        console.log('[Main] 开始启动后端...');
-
-        // 创建一个承诺，在1秒后解决，不仅仅是拒绝，这样我们可以继续流程
-        const timeoutPromise = new Promise(resolve => {
-            setTimeout(() => {
-                resolve('TIMEOUT');
-            }, 1000);
-        });
-
-        // 使用 Promise.race 等待后端启动或超时
-        const result = await Promise.race([
-            startPythonBackend(),
-            timeoutPromise
-        ]);
-
-        if (result === 'TIMEOUT') {
-            console.log('[Main] 后端启动仍在后台进行，先行显示主窗口');
-        } else {
-            console.log('[Main] 后端启动完成');
-        }
-    } catch (err) {
-        console.error('[Main] 后端启动过程中出错 (非致命):', err);
-    } finally {
-        // 无论后端状态如何，都关闭闪屏并显示主窗口
-        // 稍微延时一点点以平滑过渡
-        setTimeout(() => {
-            closeSplashAndShowMain();
-        }, 500);
-    }
-});
-
-// 所有窗口关闭时
-app.on('window-all-closed', () => {
-    // Windows 上不退出，保持托盘运行
-});
-
-// 应用退出前
-app.on('before-quit', () => {
-    isQuitting = true;
-    stopPythonBackend();
-});
-
-// 激活时（macOS）
-app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-        createMainWindow();
-    } else {
-        mainWindow.show();
-    }
-});

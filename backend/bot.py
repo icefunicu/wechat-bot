@@ -34,7 +34,7 @@ from .types import MessageEvent, ReconnectPolicy
 from .handlers.filter import should_reply
 from .handlers.sender import send_message, send_reply_chunks
 from .handlers.converters import normalize_new_messages
-from .utils.common import as_float, as_int, get_file_mtime
+from .utils.common import as_float, as_int, get_file_mtime, iter_items
 from .utils.config import load_config, get_model_alias, resolve_system_prompt
 from .utils.logging import (
     setup_logging,
@@ -54,13 +54,13 @@ from .utils.ipc import IPCManager
 
 
 class WeChatBot:
-    def __init__(self, config_path: str):
+    def __init__(self, config_path: str, memory_manager: Optional[MemoryManager] = None):
         self.config_path = config_path
         self.config: Dict[str, Any] = {}
         self.bot_cfg: Dict[str, Any] = {}
         self.api_cfg: Dict[str, Any] = {}
         self.ai_client: Optional[AIClient] = None
-        self.memory: Optional[MemoryManager] = None
+        self.memory: Optional[MemoryManager] = memory_manager
         self.wx_lock = asyncio.Lock()
         self.sem: Optional[asyncio.Semaphore] = None
         self.ipc = IPCManager()  # IPC 管理器
@@ -89,6 +89,10 @@ class WeChatBot:
         self._stop_event: Optional[asyncio.Event] = None
         self._is_paused: bool = False
 
+        # 缓存的过滤配置
+        self.ignore_names_set: Set[str] = set()
+        self.ignore_keywords_list: List[str] = []
+
     async def initialize(self) -> Optional["WeChat"]:
         try:
             self.config_mtime = get_file_mtime(self.config_path)
@@ -100,7 +104,8 @@ class WeChatBot:
         self._apply_config()
         
         # 初始化记忆模块
-        self.memory = MemoryManager(self.bot_cfg.get("sqlite_db_path", "data/chat_memory.db"))
+        if self.memory is None:
+            self.memory = MemoryManager(self.bot_cfg.get("sqlite_db_path", "data/chat_memory.db"))
         
         # 初始化 AI 客户端
         self.ai_client, preset_name = await select_ai_client(self.api_cfg, self.bot_cfg)
@@ -123,13 +128,27 @@ class WeChatBot:
         self.bot_cfg = self.config.get("bot", {})
         self.api_cfg = self.config.get("api", {})
         
-        level, log_file, max_bytes, backup_count = get_logging_settings(self.config)
-        setup_logging(level, log_file, max_bytes, backup_count)
+        level, log_file, max_bytes, backup_count, format_type = get_logging_settings(self.config)
+        setup_logging(level, log_file, max_bytes, backup_count, format_type)
         
         self.log_message_content, self.log_reply_content = get_log_behavior(self.config)
         
         max_concurrency = as_int(self.bot_cfg.get("max_concurrency", 5), 5, min_value=1)
         self.sem = asyncio.Semaphore(max_concurrency)
+
+        # 预处理过滤列表
+        ignore_names = [
+            str(name).strip()
+            for name in iter_items(self.bot_cfg.get("ignore_names", []))
+            if str(name).strip()
+        ]
+        self.ignore_names_set = {name.lower() for name in ignore_names}
+        
+        self.ignore_keywords_list = [
+            str(keyword).strip()
+            for keyword in iter_items(self.bot_cfg.get("ignore_keywords", []))
+            if str(keyword).strip()
+        ]
 
     async def run(self) -> None:
         from wxauto import WeChat  # 延迟导入以避免顶层依赖问题
@@ -303,7 +322,12 @@ class WeChatBot:
             await self.handle_event(wx, event)
             return
 
-        if not should_reply(event, self.config):
+        if not should_reply(
+            event, 
+            self.config,
+            ignore_names_set=self.ignore_names_set,
+            ignore_keywords_list=self.ignore_keywords_list
+        ):
             return
 
         chat_id = f"group:{event.chat_name}" if event.is_group else f"friend:{event.chat_name}"
@@ -400,7 +424,12 @@ class WeChatBot:
                             )
                     return
 
-                if not should_reply(event, self.config):
+                if not should_reply(
+                    event,
+                    self.config,
+                    ignore_names_set=self.ignore_names_set,
+                    ignore_keywords_list=self.ignore_keywords_list
+                ):
                     return
 
                 # 4. 语音转文字
@@ -456,22 +485,22 @@ class WeChatBot:
         user_profile = None
         
         if self.memory:
-            self.memory.add_message(chat_id, "user", user_text)
+            await asyncio.to_thread(self.memory.add_message, chat_id, "user", user_text)
             
             if self.bot_cfg.get("personalization_enabled", False):
-                user_profile = self.memory.get_user_profile(chat_id)
-                self.memory.increment_message_count(chat_id)
+                user_profile = await asyncio.to_thread(self.memory.get_user_profile, chat_id)
+                await asyncio.to_thread(self.memory.increment_message_count, chat_id)
 
             limit = as_int(self.bot_cfg.get("memory_context_limit", 5), 5)
             if limit > 0:
-                memory_context = self.memory.get_recent_context(chat_id, limit)
+                memory_context = await asyncio.to_thread(self.memory.get_recent_context, chat_id, limit)
 
         # 情感分析
         current_emotion = None
         if self.bot_cfg.get("emotion_detection_enabled", False):
             current_emotion = await self._analyze_emotion(chat_id, user_text)
             if self.memory and current_emotion:
-                self.memory.update_emotion(chat_id, current_emotion.emotion)
+                await asyncio.to_thread(self.memory.update_emotion, chat_id, current_emotion.emotion)
 
         # 系统提示词
         system_prompt = resolve_system_prompt(

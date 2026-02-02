@@ -36,6 +36,41 @@
 - 应用程序仅针对 Windows + WeChat PC 3.9.x (不支持 4.x)。请保持客户端登录并运行。
 - `backend/config.py` 的更改会被轮询并热重载；逻辑更改需要重启。
 
+## 项目运行逻辑图
+```mermaid
+flowchart TD
+    A[用户启动] --> B{入口}
+    B -->|桌面端| C[Electron 主进程]
+    B -->|命令行| D[run.py]
+
+    C --> C1[启动 Splash 与主窗口]
+    C --> C2[并行启动后端 web]
+    C2 -->|dev| C3[python run.py web --port]
+    C2 -->|prod| C4[wechat-bot-backend.exe web --port]
+    C --> C5[渲染进程初始化 App]
+    C5 --> C6[ApiService 连接后端]
+    C6 --> C7[/api/status 刷新状态]
+    C5 --> C8[用户操作按钮]
+    C8 --> C9[/api/start /api/stop /api/pause /api/resume]
+
+    D -->|start| D1[backend.main: main()]
+    D1 --> D2[WeChatBot.run()]
+    D -->|web| D3[backend.api: run_server()]
+    D -->|setup/check| D4[scripts.setup_wizard / scripts.check]
+
+    D3 --> E1[BotManager 单例]
+    E1 --> E2[管理 WeChatBot 生命周期]
+    E2 --> D2
+
+    D2 --> F1[wxauto 初始化]
+    F1 --> F2[主循环轮询消息]
+    F2 --> F3[配置热重载]
+    F2 --> F4[IPC 命令检查]
+    F2 --> F5[消息归一化与过滤]
+    F5 --> F6[AI 客户端生成回复]
+    F6 --> F7[发送消息并更新统计]
+```
+
 ## 配置说明
 - `api`: 支持 `presets`（预设）+ `active_preset`（激活预设）；包含 `base_url`、`model`、`api_key`、超时、重试、`temperature`、`max_tokens`/`max_completion_tokens` 以及可选的 `reasoning_effort`。
 - `bot`: 回复后缀、表情策略 (`wechat`/`strip`/`keep`/`mixed`)、上下文/历史限制、轮询/延迟设置、保活/重连、群回复规则（`self_name`、`group_reply_only_when_at`、白名单、忽略列表）以及发送回退。
@@ -58,12 +93,18 @@
 - **拟人化**：时间感知提示、对话风格适应、情感趋势分析和关系演进。
 - **个性化提示生成**：分析导出的聊天记录，生成模仿用户对话风格的每位联系人系统提示。
 - **Web API & 仪表板**：通过 HTTP/Electron 监控状态、发送消息和管理配置。前端采用 `StateManager` + `EventBus` 架构实现响应式 UI。
+- **关闭行为**：关闭弹窗可选择最小化或彻底关闭，并支持记住选择与重置。
 
 ## 性能优化
 - `EmotionResult` 使用 `@dataclass(slots=True)` 以减少内存占用。
 - token 估算使用 `@lru_cache(maxsize=1024)` 避免冗余计算。
-- 使用 `frozenset` 进行 O(1) 成员检查（情感关键词、消息类型标记、允许的角色）。
-- `MemoryManager` 支持上下文管理器，用于自动资源清理。
+- 使用 `frozenset` 或 `tuple` 进行高效成员检查（情感关键词、消息类型标记、允许的角色）。
+- `MemoryManager` 支持上下文管理器，用于自动资源清理；使用 `threading.RLock` 和细粒度锁保护关键状态，确保并发安全。
+- SQL 查询优化：历史消息查询使用主键索引排序 (`ORDER BY id DESC`) 以提升性能。
+- 使用 `asyncio.to_thread` 将 SQLite 数据库操作和文件 I/O 等 CPU 密集型/阻塞型任务分流到线程池，避免阻塞 Quart/AsyncIO 主事件循环。
+- CSV 导出器 (`csv_exporter.py`) 采用逐行写入模式，极大降低大规模数据导出时的内存消耗。
+- 情感分析模块优化：预编译正则表达式，优化关键词匹配逻辑。
+- Electron 客户端采用异步并行启动后端模式，配合 `ready-to-show` 事件机制，彻底解决启动白屏问题。
 
 ## 数据工作流
 1. **导出聊天记录**：使用内置 CLI (`python -m tools.chat_exporter.cli`) 将微信聊天导出为 CSV 格式（支持直接 DB 解密）。

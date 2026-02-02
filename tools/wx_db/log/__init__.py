@@ -9,6 +9,12 @@
 @Description : 
 """
 
-from wxManager.log.logger import log, logger
+try:
+    from wxManager.log.logger import log, logger
+    _IMPORT_ERROR = None
+except Exception as exc:
+    log = None
+    logger = None
+    _IMPORT_ERROR = exc
 
 __all__ = ["logger", "log"]

@@ -21,6 +21,8 @@
     - 群聊功能需正确配置 self_name 和 whitelist
 """
 
+from backend.utils.config import is_placeholder_key
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #                               全局配置字典
@@ -523,7 +525,45 @@ def _apply_config_overrides(config_dict: dict):
     except Exception as e:
         print(f"❌ 加载配置覆写失败: {e}")
 
+
+def _auto_select_active_preset(config: dict) -> None:
+    api_cfg = config.get("api")
+    if not isinstance(api_cfg, dict):
+        return
+    presets = api_cfg.get("presets")
+    if not isinstance(presets, list):
+        return
+    active_name = str(api_cfg.get("active_preset") or "").strip()
+
+    def is_usable(preset: dict) -> bool:
+        if not isinstance(preset, dict):
+            return False
+        base_url = preset.get("base_url") or api_cfg.get("base_url")
+        model = preset.get("model") or api_cfg.get("model")
+        if not base_url or not model:
+            return False
+        key = preset.get("api_key") or api_cfg.get("api_key")
+        allow_empty_key = preset.get("allow_empty_key")
+        if allow_empty_key is None:
+            allow_empty_key = api_cfg.get("allow_empty_key", False)
+        if allow_empty_key:
+            return True
+        return not is_placeholder_key(key)
+
+    if active_name:
+        active_preset = next((p for p in presets if p.get("name") == active_name), None)
+        if active_preset and is_usable(active_preset):
+            return
+
+    for preset in presets:
+        if is_usable(preset):
+            name = preset.get("name")
+            if name:
+                api_cfg["active_preset"] = name
+            return
+
 _apply_api_keys(CONFIG)
 _apply_prompt_overrides(CONFIG)
 _apply_config_overrides(CONFIG)
+_auto_select_active_preset(CONFIG)
 

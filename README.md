@@ -58,6 +58,8 @@
 - **白名单/黑名单**：过滤公众号、服务号、关键词、特定会话
 - **热重载**：配置修改实时生效，支持掉线自动重连
 - **高性能**：基于 Quart (AsyncIO) 的异步后端
+- **设置与预设管理**：新增设置页，支持添加/编辑/删除预设与一键激活
+- **连接测试与日志**：支持预设连接测试，以及查看/清空运行日志
 
 ---
 
@@ -202,10 +204,17 @@ wechat-chat/
 | 参数 | 说明 |
 |------|------|
 | `base_url` | 接口地址 |
-| `api_key` | 密钥 |
+| `api_key` | 密钥（支持占位符与空密钥策略） |
 | `model` | 模型名称 |
 | `timeout_sec` | 超时时间 |
-| `active_preset` | 优先使用的预设名 |
+| `max_retries` | 最大重试次数 |
+| `temperature` | 采样温度 |
+| `max_tokens` | 请求最大 tokens |
+| `max_completion_tokens` | 回复最大 tokens（兼容部分平台） |
+| `reasoning_effort` | 推理力度（兼容支持该参数的平台） |
+| `allow_empty_key` | 是否允许空密钥用于探测 |
+| `active_preset` | 当前激活的预设名 |
+| `presets[]` | 预设数组（包含以上字段的子项） |
 
 ### 机器人配置 (`CONFIG["bot"]`)
 
@@ -225,13 +234,17 @@ wechat-chat/
 - `POST /api/start` / `stop` / `pause` / `resume`: 启停控制
 - `GET /api/messages`: 获取最近消息记录
 - `POST /api/send`: 发送消息
-- `GET /api/config` / `POST /api/config`: 获取/修改配置
+- `GET /api/config` / `POST /api/config`: 获取/修改配置（支持预设与 Key 掩码）
+- `POST /api/test_connection`: 测试当前或指定预设的连通性
+- `GET /api/logs`: 获取运行日志（尾部 N 行）
+- `POST /api/logs/clear`: 清空当前日志文件
+- `GET /api/usage`: 获取用量统计（回复次数、tokens 等）
 
 ---
 
 ## 聊天记录导出
 
-工具位于 `tools/chat_exporter`，支持从解密后的微信数据库直接导出 CSV。
+工具位于 `tools/chat_exporter`，支持从解密后的微信数据库直接导出 CSV。采用流式逐行写入技术，支持导出数百万条记录而无内存溢出风险。
 
 ```bash
 # 示例：导出指定联系人的聊天记录
@@ -247,7 +260,7 @@ python -m tools.chat_exporter.cli --db-dir "E:\wxid_xxx\Msg" --contact "张三"
 
 ## 个性化 Prompt 生成
 
-基于导出的聊天记录，分析用户风格并生成专属 Prompt。
+基于导出的聊天记录，分析用户风格并生成专属 Prompt。智能合并连续消息，提供更精准的上下文风格模仿。
 
 ```bash
 python -m tools.prompt_gen.generator

@@ -16,6 +16,7 @@
 """
 
 import os
+import sys
 import csv
 import json
 import logging
@@ -30,9 +31,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 # Import project modules
-from app.config import CONFIG, _apply_api_keys
-from app.core.ai_client import AIClient
-from app.main import apply_ai_runtime_settings
+from backend.config import CONFIG, _apply_api_keys
+from backend.core.ai_client import AIClient
+from backend.core.factory import apply_ai_runtime_settings
 
 # Setup logging
 logging.basicConfig(
@@ -227,7 +228,8 @@ def get_top_contacts(stats: List[Tuple[str, str, int, int]], limit: int = 10) ->
 def format_history_for_prompt(records: List[Dict[str, Any]], limit: int = 50) -> str:
     """
     格式化聊天记录用于 prompt。
-
+    
+    优化：合并同一发送者的连续消息，减少 Token 消耗并提供更连贯的上下文。
     只包含文本消息，最多取最近 limit 条。
     """
     # 过滤只保留文本消息
@@ -240,13 +242,36 @@ def format_history_for_prompt(records: List[Dict[str, Any]], limit: int = 50) ->
         recent_records = text_records
 
     lines = []
+    if not recent_records:
+        return ""
+
+    current_role = None
+    current_content_buffer = []
+
     for msg in recent_records:
         role = "主人" if msg['role'] == 'assistant' else "对方"
         content = msg['content']
         # 截断过长消息
         if len(content) > 100:
             content = content[:100] + "..."
-        lines.append(f"{role}: {content}")
+            
+        if role == current_role:
+            # 同一角色，累积消息
+            current_content_buffer.append(content)
+        else:
+            # 角色切换，先输出上一角色的缓冲内容
+            if current_role is not None:
+                merged_content = " ".join(current_content_buffer)
+                lines.append(f"{current_role}: {merged_content}")
+            
+            # 开始新角色
+            current_role = role
+            current_content_buffer = [content]
+
+    # 输出最后一段缓冲内容
+    if current_role is not None and current_content_buffer:
+        merged_content = " ".join(current_content_buffer)
+        lines.append(f"{current_role}: {merged_content}")
 
     return "\n".join(lines)
 

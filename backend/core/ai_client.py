@@ -258,67 +258,96 @@ class AIClient:
         memory_context: Optional[Iterable[dict]] = None,
     ) -> Optional[str]:
         """调用模型并返回回复文本，失败返回 None。"""
-        lock = self._get_chat_lock(chat_id)
-        async with lock:
-            messages = self._build_messages(
-                chat_id, user_text, system_prompt, memory_context
-            )
-            payload = {
-                "model": self.model,
-                "messages": messages,
-            }
-            if self.temperature is not None:
-                payload["temperature"] = self.temperature
-            if self.max_completion_tokens is not None:
-                payload["max_completion_tokens"] = self.max_completion_tokens
-            elif self.max_tokens is not None:
-                payload["max_tokens"] = self.max_tokens
-            if self.reasoning_effort:
-                payload["reasoning_effort"] = self.reasoning_effort
+        # 请求去重
+        req_key = (chat_id, user_text)
+        if req_key in self._pending_requests:
+            self._stats["deduplicated_requests"] += 1
+            logging.info("检测到重复请求（%s），等待现有任务完成...", chat_id)
+            try:
+                return await self._pending_requests[req_key]
+            except Exception as exc:
+                logging.warning("等待重复请求结果失败: %s", exc)
+                return None
 
-            url = f"{self.base_url}/chat/completions"
-            headers = self._build_headers()
-            client = _get_shared_client()
+        loop = asyncio.get_running_loop()
+        future = loop.create_future()
+        self._pending_requests[req_key] = future
+        
+        try:
+            self._stats["total_requests"] += 1
+            lock = self._get_chat_lock(chat_id)
+            async with lock:
+                messages = self._build_messages(
+                    chat_id, user_text, system_prompt, memory_context
+                )
+                payload = {
+                    "model": self.model,
+                    "messages": messages,
+                }
+                if self.temperature is not None:
+                    payload["temperature"] = self.temperature
+                if self.max_completion_tokens is not None:
+                    payload["max_completion_tokens"] = self.max_completion_tokens
+                elif self.max_tokens is not None:
+                    payload["max_tokens"] = self.max_tokens
+                if self.reasoning_effort:
+                    payload["reasoning_effort"] = self.reasoning_effort
 
-            last_error: Optional[Exception] = None
-            for attempt in range(self.max_retries + 1):
-                try:
-                    resp = await client.post(
-                        url, headers=headers, json=payload, timeout=self.timeout_sec
-                    )
-                    if resp.status_code >= 400:
-                        raise RuntimeError(
-                            f"HTTP {resp.status_code}：{resp.text[:200]}"
-                        )
+                url = f"{self.base_url}/chat/completions"
+                headers = self._build_headers()
+                client = _get_shared_client()
 
+                last_error: Optional[Exception] = None
+                for attempt in range(self.max_retries + 1):
                     try:
-                        data = resp.json()
-                    except ValueError as exc:
-                        raise RuntimeError(
-                            f"响应不是 JSON：{resp.text[:200]}"
-                        ) from exc
-                    if data.get("error"):
-                        raise RuntimeError(f"接口错误：{data.get('error')}")
-                    reply = (
-                        data.get("choices", [{}])[0]
-                        .get("message", {})
-                        .get("content", "")
-                    )
-                    reply = reply.strip()
-                    if not reply:
-                        raise RuntimeError("AI 返回内容为空。")
+                        resp = await client.post(
+                            url, headers=headers, json=payload, timeout=self.timeout_sec
+                        )
+                        if resp.status_code >= 400:
+                            raise RuntimeError(
+                                f"HTTP {resp.status_code}：{resp.text[:200]}"
+                            )
 
-                    self._append_history(chat_id, user_text, reply)
-                    return reply
-                except Exception as exc:
-                    last_error = exc
-                    wait = 0.6 * (1.5**attempt)
-                    logging.warning("AI 请求失败（第 %s 次）：%s", attempt + 1, exc)
-                    if attempt < self.max_retries:
-                        await asyncio.sleep(wait)
+                        try:
+                            data = resp.json()
+                        except ValueError as exc:
+                            raise RuntimeError(
+                                f"响应不是 JSON：{resp.text[:200]}"
+                            ) from exc
+                        if data.get("error"):
+                            raise RuntimeError(f"接口错误：{data.get('error')}")
+                        reply = (
+                            data.get("choices", [{}])[0]
+                            .get("message", {})
+                            .get("content", "")
+                        )
+                        reply = reply.strip()
+                        if not reply:
+                            raise RuntimeError("AI 返回内容为空。")
 
-            logging.error("AI 请求多次失败：%s", last_error)
-            return None
+                        self._append_history(chat_id, user_text, reply)
+                        self._stats["successful_requests"] += 1
+                        if not future.done():
+                            future.set_result(reply)
+                        return reply
+                    except Exception as exc:
+                        last_error = exc
+                        wait = 0.6 * (1.5**attempt)
+                        logging.warning("AI 请求失败（第 %s 次）：%s", attempt + 1, exc)
+                        if attempt < self.max_retries:
+                            await asyncio.sleep(wait)
+
+                logging.error("AI 请求多次失败：%s", last_error)
+                self._stats["failed_requests"] += 1
+                if not future.done():
+                    future.set_result(None)
+                return None
+        except Exception as e:
+            if not future.done():
+                future.set_exception(e)
+            raise
+        finally:
+            self._pending_requests.pop(req_key, None)
 
     async def generate_reply_stream(
         self,

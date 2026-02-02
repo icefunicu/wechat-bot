@@ -4,8 +4,14 @@ import csv
 import os
 from typing import Callable, Optional, Set, Tuple
 
-from wxManager.db_main import DataBaseInterface
-from wxManager.model import Contact, Me, Message, MessageType
+try:
+    from wxManager.db_main import DataBaseInterface
+    from wxManager.model import Contact, Me, Message, MessageType
+    _IMPORT_ERROR = None
+except Exception as exc:
+    DataBaseInterface = None
+    Contact = Me = Message = MessageType = None
+    _IMPORT_ERROR = exc
 
 CSV_COLUMNS = ["消息ID", "类型", "发送人", "时间", "内容", "备注", "昵称", "更多信息"]
 
@@ -47,6 +53,10 @@ class CSVExporter:
         progress_callback: Optional[Callable[[float], None]] = None,
         finish_callback: Optional[Callable[[int], None]] = None,
     ) -> None:
+        if DataBaseInterface is None:
+            if _IMPORT_ERROR:
+                raise RuntimeError(str(_IMPORT_ERROR))
+            raise RuntimeError("wxManager 依赖未安装")
         CSVExporter._exporter_id += 1
         self.exporter_id = CSVExporter._exporter_id
         self.database = database
@@ -115,14 +125,13 @@ class CSVExporter:
         with open(filename, mode="w", newline="", encoding="utf-8-sig") as file:
             writer = csv.writer(file)
             writer.writerow(CSV_COLUMNS)
-            rows = []
+            # Optimize: Write row by row to save memory
             for index, message in enumerate(messages):
                 if total_steps and index and index % 1000 == 0:
                     self.update_progress_callback(index / total_steps)
                 if not self.is_selected(message):
                     continue
-                rows.append(self.message_to_list(message))
-            writer.writerows(rows)
+                writer.writerow(self.message_to_list(message))
         self.update_progress_callback(1.0)
         self.finish_callback(self.exporter_id)
         print(f"【完成导出 CSV {self.contact.remark}】")

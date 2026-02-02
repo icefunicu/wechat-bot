@@ -11,7 +11,7 @@ __all__ = [
 ]
 
 
-@dataclass
+@dataclass(slots=True)
 class MessageEvent:
     """
     统一的消息事件对象。
@@ -38,7 +38,7 @@ class MessageEvent:
     raw_item: Optional[Any] = None
 
 
-@dataclass
+@dataclass(slots=True)
 class ReconnectPolicy:
     """
     重连策略配置。

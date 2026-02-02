@@ -61,6 +61,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
     openExternal: (url) => ipcRenderer.invoke('open-external', url),
 
     /**
+     * 打开微信客户端
+     */
+    openWeChat: () => ipcRenderer.invoke('open-wechat'),
+
+    /**
      * 获取应用版本
      */
     getAppVersion: () => ipcRenderer.invoke('get-app-version'),
@@ -82,6 +87,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     removeTrayActionListener: () => {
         ipcRenderer.removeAllListeners('tray-action');
     },
+
+    onAppCloseDialog: (callback) => {
+        ipcRenderer.on('app-close-dialog', () => callback());
+    },
+
+    confirmCloseAction: (action, remember) => ipcRenderer.invoke('confirm-close-action', { action, remember }),
+
+    resetCloseBehavior: () => ipcRenderer.invoke('reset-close-behavior'),
 
     // ═══════════════════════════════════════════════════════════════════════
     //                           首次运行

@@ -359,8 +359,11 @@
                         </div>
                     </div>
                 </div>
-            </section>
 
+
+
+
+            </section>
             <!-- 消息页面 -->
             <section class="page" id="page-messages">
                 <div class="page-header">
@@ -410,108 +413,142 @@
                 </div>
 
                 <div class="settings-container">
-                    <!-- 当前配置概览 -->
-                    <div class="settings-section">
-                        <div class="settings-section-header">
-                            <h2 class="settings-section-title">当前配置</h2>
-                        </div>
-                        <div class="settings-section-body">
-                            <div class="config-info-grid">
-                                <div class="config-info-card">
-                                    <div class="config-info-label">当前预设</div>
-                                    <div class="config-info-value" id="info-active-preset">--</div>
-                                </div>
-                                <div class="config-info-card">
-                                    <div class="config-info-label">模型</div>
-                                    <div class="config-info-value" id="info-model">--</div>
-                                </div>
-                                <div class="config-info-card">
-                                    <div class="config-info-label">模型别名</div>
-                                    <div class="config-info-value" id="info-alias">--</div>
-                                </div>
-                                <div class="config-info-card">
-                                    <div class="config-info-label">API Key</div>
-                                    <div class="config-info-value" id="info-api-key">--</div>
+                    <!-- 当前配置 Hero (由 JS 动态渲染) -->
+                    <div id="current-config-hero">
+                        <div class="config-hero-card" style="opacity: 0.5; pointer-events: none;">
+                            <div class="hero-content">
+                                <div class="hero-title">
+                                    <span class="hero-name">加载配置中...</span>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- 预设切换 -->
-                    <div class="settings-section">
-                        <div class="settings-section-header">
-                            <h2 class="settings-section-title">API 预设</h2>
-                            <button class="btn btn-secondary btn-sm" id="btn-add-preset" style="margin-left: auto;">
+                    <!-- API 预设 -->
+                    <div class="settings-card">
+                        <div class="settings-card-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <h2 class="settings-card-title" style="margin-bottom: 0;">API 预设</h2>
+                            <button class="btn btn-secondary btn-sm" id="btn-add-preset">
                                 <svg class="icon icon-sm">
                                     <use href="#icon-plus" />
                                 </svg>
                                 <span>新增</span>
                             </button>
                         </div>
-                        <div class="settings-section-body">
-                            <div class="preset-list" id="preset-list">
-                                <div class="loading-state">
-                                    <div class="spinner"></div>
-                                    <span>加载预设中...</span>
-                                </div>
+                        <div class="preset-list" id="preset-list">
+                            <div class="loading-state">
+                                <div class="spinner"></div>
+                                <span>加载预设中...</span>
                             </div>
                         </div>
                     </div>
 
                     <!-- 机器人设置 -->
-                    <div class="settings-section">
-                        <div class="settings-section-header">
-                            <h2 class="settings-section-title">机器人设置</h2>
-                        </div>
-                        <div class="settings-section-body">
-                            <div class="settings-grid">
-                                <div class="form-group">
-                                    <label class="form-label">微信昵称</label>
-                                    <input type="text" class="form-input" id="setting-self-name" placeholder="你的微信昵称">
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-label">回复后缀</label>
-                                    <input type="text" class="form-input" id="setting-reply-suffix"
-                                        placeholder="（AI回复）">
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-checkbox">
-                                        <input type="checkbox" id="setting-stream-reply">
-                                        <span class="form-checkbox-label">启用流式回复</span>
-                                    </label>
-                                </div>
-                                <div class="form-group">
-                                    <label class="form-checkbox">
-                                        <input type="checkbox" id="setting-group-at-only">
-                                        <span class="form-checkbox-label">群聊仅@时回复</span>
-                                    </label>
-                                </div>
+                    <div class="settings-card">
+                        <h2 class="settings-card-title">机器人设置</h2>
+                        <div class="settings-grid">
+                            <div class="form-group">
+                                <label class="form-label">微信昵称</label>
+                                <input type="text" id="setting-self-name" placeholder="你的微信昵称">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">回复后缀</label>
+                                <input type="text" id="setting-reply-suffix" placeholder="（AI回复）">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-stream-reply">
+                                    <span class="form-checkbox-label">启用流式回复</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-group-at-only">
+                                    <span class="form-checkbox-label">群聊仅@时回复</span>
+                                </label>
                             </div>
                         </div>
                     </div>
 
-                    <!-- 白名单设置 -->
-                    <div class="settings-section">
-                        <div class="settings-section-header">
-                            <h2 class="settings-section-title">白名单管理</h2>
+                    <div class="settings-card">
+                        <h2 class="settings-card-title">关闭行为</h2>
+                        <div class="form-group full-width">
+                            <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;">如需重新选择关闭方式，可在此重置</div>
+                            <button class="btn btn-secondary btn-sm" id="btn-reset-close-behavior">重置关闭选择</button>
                         </div>
-                        <div class="settings-section-body">
-                            <div class="settings-grid">
-                                <div class="form-group full-width">
-                                    <label class="form-checkbox">
-                                        <input type="checkbox" id="setting-whitelist-enabled">
-                                        <span class="form-checkbox-label">启用白名单模式（仅回复白名单中的联系人/群）</span>
-                                    </label>
-                                </div>
-                                <div class="form-group full-width">
-                                    <label class="form-label">白名单（每行一个联系人或群名）</label>
-                                    <textarea class="form-textarea" id="setting-whitelist" rows="4"
-                                        placeholder="联系人1&#10;群聊1&#10;..."></textarea>
-                                </div>
-                            </div>
+                    </div>
+
+                    <!-- 白名单设置 -->
+                    <div class="settings-card">
+                        <h2 class="settings-card-title">白名单管理</h2>
+                        <div class="form-group full-width">
+                            <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                <input type="checkbox" id="setting-whitelist-enabled">
+                                <span class="form-checkbox-label">启用白名单模式（仅回复白名单中的联系人/群）</span>
+                            </label>
+                        </div>
+                        <div class="form-group full-width">
+                            <label class="form-label">白名单（每行一个联系人或群名）</label>
+                            <textarea id="setting-whitelist" rows="4" placeholder="联系人1&#10;群聊1&#10;..."></textarea>
                         </div>
                     </div>
                 </div>
+
+                <!-- 预设编辑模态框 -->
+                <div class="modal-overlay" id="preset-modal">
+                    <div class="modal">
+                        <div class="modal-header">
+                            <h3 class="modal-title">编辑预设</h3>
+                            <button class="modal-close" id="btn-close-modal">
+                                <svg class="icon icon-sm">
+                                    <use href="#icon-x" />
+                                </svg>
+                            </button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="settings-grid" style="grid-template-columns: 1fr;">
+                                <input type="hidden" id="edit-preset-original-name">
+                                <div class="form-group">
+                                    <label class="form-label">预设名称 (ID)</label>
+                                    <input type="text" class="form-input" id="edit-preset-name" placeholder="例如: OpenAI">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">模型 (Model)</label>
+                                    <select class="form-input" id="edit-preset-model-select">
+                                        <option value="">-- 选择模型 --</option>
+                                    </select>
+                                    <input type="text" class="form-input" id="edit-preset-model-custom" placeholder="输入自定义模型名称"
+                                        style="display: none; margin-top: 8px;">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">别名 (Alias)</label>
+                                    <input type="text" class="form-input" id="edit-preset-alias" placeholder="例如: 小欧">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">API Key</label>
+                                    <div style="display: flex; gap: 8px;">
+                                        <input type="password" class="form-input" id="edit-preset-key" style="flex: 1;"
+                                            placeholder="输入 API Key">
+                                        <button class="btn btn-secondary btn-sm" id="btn-toggle-key" title="显示/隐藏">
+                                            <svg class="icon icon-sm">
+                                                <use href="#icon-message" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                    <span class="form-label" style="font-size: 11px; margin-top: 4px;">留空则保持原有 Key 不变</span>
+                                    <div id="api-key-help" style="font-size: 11px; margin-top: 4px; display: none;">
+                                        <a id="api-key-help-link" href="#" target="_blank" style="color: var(--primary-color); text-decoration: none;">获取 API Key &rarr;</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button class="btn btn-secondary btn-sm" id="btn-cancel-modal">取消</button>
+                            <button class="btn btn-primary btn-sm" id="btn-save-modal">确认保存</button>
+                        </div>
+                    </div>
+                </div>
+
             </section>
 
             <!-- 日志页面 -->
@@ -545,58 +582,26 @@
         </main>
     </div>
 
-    <!-- 预设编辑模态框 -->
-    <div class="modal-overlay" id="preset-modal">
+    <div class="modal-overlay" id="close-choice-modal">
         <div class="modal">
             <div class="modal-header">
-                <h3 class="modal-title">编辑预设</h3>
-                <button class="modal-close" id="btn-close-modal">
-                    <svg class="icon icon-sm">
-                        <use href="#icon-x" />
-                    </svg>
-                </button>
+                <h3 class="modal-title">关闭应用</h3>
             </div>
             <div class="modal-body">
-                <div class="settings-grid" style="grid-template-columns: 1fr;">
-                    <input type="hidden" id="edit-preset-original-name">
-                    <div class="form-group">
-                        <label class="form-label">预设名称 (ID)</label>
-                        <input type="text" class="form-input" id="edit-preset-name" placeholder="例如: OpenAI">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">模型 (Model)</label>
-                        <select class="form-input" id="edit-preset-model-select">
-                            <option value="">-- 选择模型 --</option>
-                        </select>
-                        <input type="text" class="form-input" id="edit-preset-model-custom" placeholder="输入自定义模型名称"
-                            style="display: none; margin-top: 8px;">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">别名 (Alias)</label>
-                        <input type="text" class="form-input" id="edit-preset-alias" placeholder="例如: 小欧">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">API Key</label>
-                        <div style="display: flex; gap: 8px;">
-                            <input type="password" class="form-input" id="edit-preset-key" style="flex: 1;"
-                                placeholder="输入 API Key">
-                            <button class="btn btn-secondary btn-sm" id="btn-toggle-key" title="显示/隐藏">
-                                <svg class="icon icon-sm">
-                                    <use href="#icon-message" />
-                                </svg>
-                            </button>
-                        </div>
-                        <span class="form-label" style="font-size: 11px; margin-top: 4px;">留空则保持原有 Key 不变</span>
-                        <div id="api-key-help" style="font-size: 11px; margin-top: 4px; display: none;">
-                            <a href="#" target="_blank" style="color: var(--primary-color); text-decoration: none;">获取
-                                API Key &rarr;</a>
-                        </div>
-                    </div>
+                <div class="form-group full-width">
+                    <div style="font-size: 14px; color: var(--text-secondary);">请选择关闭方式</div>
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-top: 6px;">当前状态：<span id="close-choice-status">--</span></div>
+                </div>
+                <div class="form-group full-width" style="margin-top: 8px;">
+                    <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                        <input type="checkbox" id="close-choice-remember">
+                        <span class="form-checkbox-label">记住我的选择，下次不再提示</span>
+                    </label>
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary btn-sm" id="btn-cancel-modal">取消</button>
-                <button class="btn btn-primary btn-sm" id="btn-save-modal">确认保存</button>
+                <button class="btn btn-secondary btn-sm" id="btn-close-choice-minimize">最小化到托盘</button>
+                <button class="btn btn-primary btn-sm" id="btn-close-choice-quit">彻底关闭</button>
             </div>
         </div>
     </div>
@@ -605,7 +610,7 @@
     <div class="toast-container" id="toast-container"></div>
 
     <!-- 重构后的统一入口（已内置 API 和组件功能）-->
-    <script src="js/app.js"></script>
+    <script type="module" src="js/app.module.js"></script>
 </body>
 
 </html>

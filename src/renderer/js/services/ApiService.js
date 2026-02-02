@@ -100,7 +100,7 @@ class ApiService {
      * @param {string} reason - 暂停原因
      */
     async pauseBot(reason = '用户暂停') {
-        return this.request('/api/pause', {
+        return this.request('/api/pause', { 
             method: 'POST',
             body: { reason }
         });
@@ -111,6 +111,17 @@ class ApiService {
      */
     async resumeBot() {
         return this.request('/api/resume', { method: 'POST' });
+    }
+
+    /**
+     * 测试 LLM 连接
+     * @param {string} presetName - 预设名称（可选）
+     */
+    async testConnection(presetName = null) {
+        return this.request('/api/test_connection', {
+            method: 'POST',
+            body: { preset_name: presetName }
+        });
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -174,7 +185,7 @@ class ApiService {
      * 清空日志
      */
     async clearLogs() {
-        return this.request('/api/logs', { method: 'DELETE' });
+        return this.request('/api/logs/clear', { method: 'POST' });
     }
 
     // ═══════════════════════════════════════════════════════════════════════

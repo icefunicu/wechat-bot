@@ -37,8 +37,22 @@ export class DashboardPage extends PageController {
         this.bindEvent('#btn-restart', 'click', () => this._restartBot());
 
         // 快捷操作
-        this.bindEvent('#btn-open-wechat', 'click', () => {
-            toast.info('请手动打开微信客户端');
+        this.bindEvent('#btn-open-wechat', 'click', async () => {
+            try {
+                if (window.electronAPI && window.electronAPI.openWeChat) {
+                    await window.electronAPI.openWeChat();
+                    toast.success('正在打开微信...');
+                } else {
+                    toast.info('请手动打开微信客户端');
+                }
+            } catch (e) {
+                console.error('打开微信失败:', e);
+                if (e.message && e.message.includes('No handler registered')) {
+                    toast.error('请重启应用以应用最新更改');
+                } else {
+                    toast.error('打开微信失败，请手动打开');
+                }
+            }
         });
 
         this.bindEvent('#btn-view-logs', 'click', () => {

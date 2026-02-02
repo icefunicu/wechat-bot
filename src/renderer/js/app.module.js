@@ -7,6 +7,12 @@
  * - 全局事件协调
  */
 
+// 修复 ReferenceError: dragEvent is not defined
+// 某些环境下可能存在对 dragEvent 的错误引用（可能是 DragEvent 的拼写错误或遗留代码）
+if (typeof window.dragEvent === 'undefined') {
+    window.dragEvent = window.DragEvent;
+}
+
 import { stateManager, eventBus, Events } from './core/index.js';
 import { apiService, notificationService } from './services/index.js';
 import { DashboardPage, MessagesPage, SettingsPage, LogsPage } from './pages/index.js';
@@ -47,6 +53,7 @@ class App {
 
         // 绑定全局事件
         this._bindGlobalEvents();
+        this._setupCloseChoiceModal();
 
         // 初始化所有页面
         for (const page of Object.values(this.pages)) {
@@ -142,6 +149,64 @@ class App {
         // 监听状态刷新事件
         eventBus.on(Events.BOT_STATUS_CHANGE, () => {
             this._refreshStatus();
+        });
+    }
+
+    _setupCloseChoiceModal() {
+        const modal = document.getElementById('close-choice-modal');
+        const remember = document.getElementById('close-choice-remember');
+        const btnMinimize = document.getElementById('btn-close-choice-minimize');
+        const btnQuit = document.getElementById('btn-close-choice-quit');
+        const statusText = document.getElementById('close-choice-status');
+
+        if (!modal || !window.electronAPI?.onAppCloseDialog) return;
+
+        const openModal = () => {
+            if (remember) remember.checked = false;
+            const running = stateManager.get('bot.running');
+            const paused = stateManager.get('bot.paused');
+            if (statusText) {
+                if (!running) {
+                    statusText.textContent = '机器人已停止';
+                } else if (paused) {
+                    statusText.textContent = '机器人已暂停';
+                } else {
+                    statusText.textContent = '机器人运行中';
+                }
+            }
+            modal.classList.add('active');
+        };
+
+        const closeModal = () => {
+            modal.classList.remove('active');
+        };
+
+        window.electronAPI.onAppCloseDialog(() => {
+            openModal();
+        });
+
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeModal();
+            }
+        });
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && modal.classList.contains('active')) {
+                closeModal();
+            }
+        });
+
+        btnMinimize?.addEventListener('click', async () => {
+            const keep = !!remember?.checked;
+            closeModal();
+            await window.electronAPI.confirmCloseAction('minimize', keep);
+        });
+
+        btnQuit?.addEventListener('click', async () => {
+            const keep = !!remember?.checked;
+            closeModal();
+            await window.electronAPI.confirmCloseAction('quit', keep);
         });
     }
 

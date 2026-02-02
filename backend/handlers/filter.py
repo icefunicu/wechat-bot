@@ -13,7 +13,12 @@ from ..utils.common import iter_items
 __all__ = ["should_reply"]
 
 
-def should_reply(event: MessageEvent, config: Dict[str, Any]) -> bool:
+def should_reply(
+    event: MessageEvent,
+    config: Dict[str, Any],
+    ignore_names_set: set = None,
+    ignore_keywords_list: list = None,
+) -> bool:
     """
     判断是否应该回复该消息。
     
@@ -44,23 +49,27 @@ def should_reply(event: MessageEvent, config: Dict[str, Any]) -> bool:
         logging.debug("跳过服务号：%s", event.chat_name)
         return False
 
-    ignore_names = [
-        str(name).strip()
-        for name in iter_items(bot_cfg.get("ignore_names", []))
-        if str(name).strip()
-    ]
-    ignore_keywords = [
-        str(keyword).strip()
-        for keyword in iter_items(bot_cfg.get("ignore_keywords", []))
-        if str(keyword).strip()
-    ]
-    if ignore_names or ignore_keywords:
+    # 优化：使用预处理的集合/列表
+    if ignore_names_set is None or ignore_keywords_list is None:
+        ignore_names = [
+            str(name).strip()
+            for name in iter_items(bot_cfg.get("ignore_names", []))
+            if str(name).strip()
+        ]
+        ignore_keywords = [
+            str(keyword).strip()
+            for keyword in iter_items(bot_cfg.get("ignore_keywords", []))
+            if str(keyword).strip()
+        ]
+        ignore_names_set = {name.lower() for name in ignore_names}
+        ignore_keywords_list = ignore_keywords
+    
+    if ignore_names_set or ignore_keywords_list:
         chat_name_norm = event.chat_name.strip().lower()
-        ignore_name_set = {name.lower() for name in ignore_names}
-        if chat_name_norm in ignore_name_set:
+        if chat_name_norm in ignore_names_set:
             logging.debug("跳过忽略会话：%s", event.chat_name)
             return False
-        for keyword in ignore_keywords:
+        for keyword in ignore_keywords_list:
             if keyword in event.chat_name:
                 logging.debug(
                     "跳过会话：%s（命中忽略关键词：%s）",

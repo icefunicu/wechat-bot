@@ -12,12 +12,22 @@ from typing import List
 
 import psutil
 
-from wxManager.decrypt.wx_info_v3 import dump_wechat_info_v3
-from wxManager.decrypt.wx_info_v4 import dump_wechat_info_v4
-from wxManager.decrypt.common import WeChatInfo
+try:
+    from wxManager.decrypt.wx_info_v3 import dump_wechat_info_v3
+    from wxManager.decrypt.wx_info_v4 import dump_wechat_info_v4
+    from wxManager.decrypt.common import WeChatInfo
+    _IMPORT_ERROR = None
+except Exception as exc:
+    dump_wechat_info_v3 = dump_wechat_info_v4 = None
+    WeChatInfo = None
+    _IMPORT_ERROR = exc
 
 
 def get_info_v4() -> List[WeChatInfo]:
+    if dump_wechat_info_v4 is None:
+        if _IMPORT_ERROR:
+            raise RuntimeError(str(_IMPORT_ERROR))
+        raise RuntimeError("wxManager 依赖未安装")
     result_v4 = []
     for process in psutil.process_iter(['name', 'exe', 'pid']):
         if process.name() == 'Weixin.exe':
@@ -37,6 +47,10 @@ def get_info_v4() -> List[WeChatInfo]:
 
 
 def get_info_v3(version_list) -> List[WeChatInfo]:
+    if dump_wechat_info_v3 is None:
+        if _IMPORT_ERROR:
+            raise RuntimeError(str(_IMPORT_ERROR))
+        raise RuntimeError("wxManager 依赖未安装")
     result = []
     for process in psutil.process_iter(['name', 'exe', 'pid']):
         if process.name() == 'WeChat.exe':

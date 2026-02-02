@@ -30,8 +30,11 @@ _cache_mtime: float = 0.0
 
 def _get_summary_file_path() -> str:
     """获取 JSON 汇总文件的完整路径。"""
+    # 假设 tools/prompt_gen/overrides.py
+    # chat_exports 在项目根目录
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     return os.path.join(
-        os.path.dirname(__file__),
+        project_root,
         CHAT_EXPORTS_DIR,
         SUMMARY_FILE_NAME
     )

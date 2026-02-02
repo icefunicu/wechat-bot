@@ -90,9 +90,12 @@ def check_wechat_connection() -> Tuple[bool, str]:
 
 def check_api_config() -> Tuple[bool, str, int]:
     """检查 API 配置"""
-    config_path = os.path.join(PROJECT_ROOT, "app", "config.py")
+    config_path = os.path.join(PROJECT_ROOT, "backend", "config.py")
     if not os.path.exists(config_path):
-        return False, "config.py 不存在", 0
+        # Fallback to check app/config.py just in case
+        config_path = os.path.join(PROJECT_ROOT, "app", "config.py")
+        if not os.path.exists(config_path):
+            return False, "config.py 不存在", 0
     
     try:
         import importlib.util

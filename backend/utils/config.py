@@ -3,9 +3,11 @@
 """
 
 import importlib.util
+import logging
 from typing import Any, Dict, List, Optional
 
 from .common import as_int, as_float, as_optional_int, as_optional_str, iter_items
+from backend.config_schemas import AppConfig
 
 __all__ = [
     "normalize_system_prompt",
@@ -44,8 +46,19 @@ def load_config_py(path: str) -> Dict[str, Any]:
 
 
 def load_config(path: str) -> Dict[str, Any]:
-    """加载配置文件（目前仅支持 .py）。"""
-    return load_config_py(path)
+    """加载配置文件（目前仅支持 .py），并使用 Pydantic 验证。"""
+    raw_config = load_config_py(path)
+    
+    # 验证并规范化
+    try:
+        # Pydantic 验证
+        app_config = AppConfig(**raw_config)
+        # 转换回字典，使用 mode='json' 确保枚举等类型被序列化为基本类型
+        validated_config = app_config.model_dump(mode='json')
+        return validated_config
+    except Exception as e:
+        logging.error(f"配置验证失败: {e}。将使用原始配置。")
+        return raw_config
 
 
 def get_setting(

@@ -6,8 +6,8 @@
     - export_contacts: 批量导出联系人聊天记录
 """
 
-from export.csv_exporter import CSVExporter
-from export.cli import export_contacts, collect_contacts
+from .csv_exporter import CSVExporter
+from .cli import export_contacts, collect_contacts
 
 __all__ = [
     "CSVExporter",

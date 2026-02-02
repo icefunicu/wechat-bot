@@ -8,14 +8,14 @@
     - generate_personalized_prompt: 生成个性化 Prompt（异步）
 """
 
-from prompts.overrides import (
+from .overrides import (
     PROMPT_OVERRIDES,
     get_prompt_for_contact,
     reload_prompts,
     list_contacts,
     get_prompt_stats,
 )
-from prompts.generator import generate_personalized_prompt
+from .generator import generate_personalized_prompt
 
 __all__ = [
     # 从 overrides 导出

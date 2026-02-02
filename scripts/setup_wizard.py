@@ -34,6 +34,7 @@ PRESETS = [
         "base_url": "https://ark.cn-beijing.volces.com/api/v3",
         "model": "doubao-seed-1-8-251228",
         "price_hint": "￥0.002/千tokens，性价比高",
+        "key_url": "https://console.volcengine.com/ark",
     },
     {
         "name": "DeepSeek",
@@ -41,6 +42,7 @@ PRESETS = [
         "base_url": "https://api.deepseek.com/v1",
         "model": "deepseek-chat",
         "price_hint": "￥0.001/千tokens，国产高性价比",
+        "key_url": "https://platform.deepseek.com/api_keys",
     },
     {
         "name": "OpenAI",
@@ -48,6 +50,7 @@ PRESETS = [
         "base_url": "https://api.openai.com/v1",
         "model": "gpt-4o-mini",
         "price_hint": "$0.15/百万tokens，全球领先",
+        "key_url": "https://platform.openai.com/api-keys",
     },
     {
         "name": "Zhipu",
@@ -55,6 +58,7 @@ PRESETS = [
         "base_url": "https://open.bigmodel.cn/api/paas/v4",
         "model": "glm-4.5-air",
         "price_hint": "￥0.001/千tokens，清华系",
+        "key_url": "https://open.bigmodel.cn/usercenter/apikeys",
     },
     {
         "name": "Moonshot",
@@ -62,6 +66,7 @@ PRESETS = [
         "base_url": "https://api.moonshot.cn/v1",
         "model": "moonshot-v1-8k",
         "price_hint": "￥0.012/千tokens，长文本处理强",
+        "key_url": "https://platform.moonshot.cn/console/api-keys",
     },
     {
         "name": "SiliconFlow",
@@ -69,6 +74,7 @@ PRESETS = [
         "base_url": "https://api.siliconflow.cn/v1",
         "model": "deepseek-ai/DeepSeek-V3",
         "price_hint": "多模型聚合平台",
+        "key_url": "https://cloud.siliconflow.cn/account/ak",
     },
 ]
 
@@ -282,6 +288,7 @@ async def run_wizard():
     print_step(2, "输入 API 密钥")
 
     print(f"请输入您的 {selected_preset['name']} API 密钥。")
+    print(f"获取地址: {selected_preset['key_url']}")
     print("（如果还没有，请先到官网申请）\n")
 
     api_key = ""

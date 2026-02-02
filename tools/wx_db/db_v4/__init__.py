@@ -9,11 +9,16 @@
 @Description : 
 """
 
-from .message import MessageDB
-from .contact import ContactDB
-from .session import SessionDB
-from .head_image import HeadImageDB
-from .hardlink import HardLinkDB
+try:
+    from .message import MessageDB
+    from .contact import ContactDB
+    from .session import SessionDB
+    from .head_image import HeadImageDB
+    from .hardlink import HardLinkDB
+    _IMPORT_ERROR = None
+except Exception as exc:
+    MessageDB = ContactDB = SessionDB = HeadImageDB = HardLinkDB = None
+    _IMPORT_ERROR = exc
 
 if __name__ == '__main__':
     pass
