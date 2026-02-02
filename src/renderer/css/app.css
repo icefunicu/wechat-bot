@@ -196,6 +196,25 @@ body {
 
 
 
+/* 滚动条美化 */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--bg-hover);
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-disabled);
+}
+
 /* 选择禁用 */
 
 .no-select {
@@ -532,7 +551,7 @@ a:hover {
 
 .nav-item.active {
 
-    background: var(--color-primary);
+    background: var(--gradient-primary);
 
     color: white;
 
@@ -616,11 +635,19 @@ a:hover {
 
 
 
+@keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4); }
+    70% { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
 .status-dot.online {
 
     background: var(--color-success);
 
     box-shadow: var(--glow-success);
+
+    animation: pulse 2s infinite;
 
 }
 
@@ -834,9 +861,11 @@ a:hover {
 
 .btn-primary:hover:not(:disabled) {
 
-    background: var(--color-primary-dark);
+    filter: brightness(1.1);
 
     box-shadow: var(--glow-primary);
+
+    transform: translate3d(0, -1px, 0);
 
 }
 
@@ -844,9 +873,11 @@ a:hover {
 
 .btn-cta {
 
-    background: var(--color-cta);
+    background: var(--gradient-cta);
 
     color: white;
+
+    box-shadow: 0 2px 4px rgba(249, 115, 22, 0.25);
 
 }
 
@@ -854,7 +885,9 @@ a:hover {
 
 .btn-cta:hover:not(:disabled) {
 
-    background: var(--color-cta-hover);
+    filter: brightness(1.1);
+
+    transform: translateY(-1px);
 
 }
 
@@ -1375,22 +1408,31 @@ a:hover {
 
 
 .message-list {
-
     max-height: 320px;
-
     overflow-y: auto;
-
+    scroll-behavior: smooth; /* 平滑滚动 */
+    contain: strict; /* 严格隔离，最大化性能 */
+    content-visibility: auto; /* 智能跳过视口外渲染 */
+    contain-intrinsic-size: 0 500px; /* 预估高度，防止滚动条跳动 */
 }
-
-
 
 .message-list.full-height {
-
     max-height: calc(100vh - 220px);
-
+    contain-intrinsic-size: 0 1000px;
 }
 
 
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translate3d(0, 10px, 0);
+    }
+    to {
+        opacity: 1;
+        transform: translate3d(0, 0, 0);
+    }
+}
 
 .message-item {
 
@@ -1404,17 +1446,30 @@ a:hover {
 
     background: var(--bg-elevated);
 
+    backdrop-filter: blur(5px);
+
     border-radius: var(--radius-md);
 
-    transition: background var(--transition-fast);
+    transition: background var(--transition-fast), transform var(--transition-fast);
+
+    animation: fadeInUp 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+
+    border: 1px solid transparent;
+    
+    will-change: transform, opacity;
+
+    /* 极致性能：视口外自动跳过渲染（类似虚拟滚动） */
+    content-visibility: auto; 
+    contain-intrinsic-size: 0 80px; /* 预估单条消息高度 */
+    contain: layout style;
 
 }
-
-
 
 .message-item:hover {
 
     background: var(--bg-hover);
+
+    border-color: var(--border-subtle);
 
 }
 
@@ -1584,15 +1639,19 @@ a:hover {
 
     height: 32px;
 
-    border: 3px solid var(--border-color);
+    border: 3px solid transparent;
 
     border-top-color: var(--color-primary);
+
+    border-right-color: var(--color-primary-light);
 
     border-radius: 50%;
 
     animation: spin 0.8s linear infinite;
 
     margin-bottom: 16px;
+
+    box-shadow: var(--glow-primary);
 
 }
 

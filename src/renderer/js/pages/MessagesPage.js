@@ -94,7 +94,7 @@ export class MessagesPage extends PageController {
             return;
         }
 
-        container.innerHTML = messages.map(msg => {
+        container.innerHTML = messages.map((msg, index) => {
             const icon = msg.is_self
                 ? '<svg class="icon"><use href="#icon-bot"/></svg>'
                 : '<svg class="icon"><use href="#icon-user"/></svg>';
@@ -103,7 +103,7 @@ export class MessagesPage extends PageController {
             const text = this._escapeHtml(msg.content || msg.text || '');
 
             return `
-                <div class="message-item">
+                <div class="message-item" style="animation-delay: ${index * 0.03}s">
                     <div class="message-avatar">${icon}</div>
                     <div class="message-body">
                         <div class="message-meta">
