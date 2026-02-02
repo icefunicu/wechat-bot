@@ -36,7 +36,7 @@
 ### 🤖 核心功能
 | 功能 | 说明 |
 |------|------|
-| **多预设 API** | 支持 OpenAI 兼容多家服务，按优先级自动探测可用模型 |
+| **多预设 API** | 支持 OpenAI、DeepSeek、豆包、Kimi (Moonshot)、智谱 (Zhipu) 等多家服务，自动探测可用模型 |
 | **文本自动回复** | 消息规范化、群聊 @ 识别、可选发送者前缀 |
 | **语音转文字** | 调用微信内置转写（可开关，失败可回退回复） |
 | **回复策略** | 流式输出、分段发送、随机延迟、最小回复间隔 |
@@ -93,6 +93,8 @@ API_KEYS = {
     "presets": {
         "OpenAI": "YOUR_OPENAI_KEY",
         "Doubao": "YOUR_DOUBAO_KEY",
+        "DeepSeek": "YOUR_DEEPSEEK_KEY",
+        "SiliconFlow": "YOUR_SILICONFLOW_KEY",
     },
 }
 ```
