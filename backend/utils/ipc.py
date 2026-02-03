@@ -2,7 +2,11 @@ import json
 import os
 import time
 import uuid
+import logging
+from collections import deque
 from typing import List, Dict, Optional
+
+logger = logging.getLogger(__name__)
 
 class IPCManager:
     """进程间通信管理器 (基于文件)"""
@@ -88,8 +92,8 @@ class IPCManager:
         try:
             with open(self.msg_file, "a", encoding="utf-8") as f:
                 f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"写入 IPC 消息失败: {e}")
 
     def get_recent_messages(self, limit: int = 50) -> List[Dict]:
         """(Web端) 获取最近消息"""
@@ -99,12 +103,14 @@ class IPCManager:
             
         try:
             with open(self.msg_file, "r", encoding="utf-8") as f:
-                # 简单的倒序读取实现
-                lines = f.readlines()
-                for line in lines[-limit:]:
+                # 使用 deque 高效读取最后 N 行，避免读取整个文件
+                last_lines = deque(f, maxlen=limit)
+                for line in last_lines:
                     try:
                         messages.append(json.loads(line))
-                    except: pass
+                    except json.JSONDecodeError:
+                        pass
             return messages
-        except:
+        except Exception as e:
+            logger.error(f"读取最近消息失败: {e}")
             return []

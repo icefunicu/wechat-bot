@@ -179,6 +179,42 @@ class ApiService {
         });
     }
 
+    /**
+     * 连接 SSE 事件流
+     * @param {Function} onMessage - 收到消息回调
+     * @param {Function} onError - 错误回调
+     * @returns {EventSource} SSE 对象
+     */
+    connectSSE(onMessage, onError) {
+        if (!this.initialized) {
+            // 如果未初始化，这里可能会有问题，因为 baseUrl 还没拿。
+            // 但通常调 connectSSE 时 app 应该已经 init 了。
+            // 简单处理：如果 baseUrl 是默认值，尝试同步获取一次（虽然 request 是 async 的，这里 EventSource 是 sync 的）
+            // 更好的做法是让调用者确保 init。
+        }
+
+        const url = `${this.baseUrl}/api/events`;
+        console.log('[ApiService] 连接 SSE:', url);
+        
+        const eventSource = new EventSource(url);
+        
+        eventSource.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (onMessage) onMessage(data);
+            } catch (e) {
+                console.error('[ApiService] SSE 解析失败:', e);
+            }
+        };
+
+        eventSource.onerror = (err) => {
+            console.error('[ApiService] SSE 错误:', err);
+            if (onError) onError(err);
+        };
+
+        return eventSource;
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     //                           消息 API
     // ═══════════════════════════════════════════════════════════════════════

@@ -35,6 +35,7 @@ class MessageEvent:
     msg_type: str
     is_self: bool
     chat_type: Optional[str]
+    timestamp: Optional[float] = None
     raw_item: Optional[Any] = None
 
 

@@ -33,6 +33,7 @@ from functools import lru_cache
 from typing import AsyncIterator, Deque, Dict, Iterable, List, Optional, Tuple
 
 import httpx
+from tenacity import AsyncRetrying, stop_after_attempt, wait_exponential, retry_if_exception_type, RetryError
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -150,12 +151,18 @@ class AIClient:
         max_completion_tokens: Optional[int] = None,
         reasoning_effort: Optional[str] = None,
         model_alias: Optional[str] = None,
+        embedding_model: Optional[str] = None, # 新增
         history_max_chats: int = 200,
         history_ttl_sec: Optional[float] = 24 * 60 * 60,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.model = model
+        if embedding_model is None:
+            self.embedding_model = "text-embedding-3-small"
+        else:
+            value = str(embedding_model).strip()
+            self.embedding_model = value if value else None
         self.model_alias = model_alias or ""
         self.timeout_sec = _coerce_timeout(timeout_sec)
         self.max_retries = _coerce_retries(max_retries)
@@ -256,6 +263,7 @@ class AIClient:
         user_text: str,
         system_prompt: Optional[str] = None,
         memory_context: Optional[Iterable[dict]] = None,
+        image_path: Optional[str] = None,
     ) -> Optional[str]:
         """调用模型并返回回复文本，失败返回 None。"""
         # 请求去重
@@ -278,7 +286,7 @@ class AIClient:
             lock = self._get_chat_lock(chat_id)
             async with lock:
                 messages = self._build_messages(
-                    chat_id, user_text, system_prompt, memory_context
+                    chat_id, user_text, system_prompt, memory_context, image_path
                 )
                 payload = {
                     "model": self.model,
@@ -297,51 +305,55 @@ class AIClient:
                 headers = self._build_headers()
                 client = _get_shared_client()
 
-                last_error: Optional[Exception] = None
-                for attempt in range(self.max_retries + 1):
-                    try:
-                        resp = await client.post(
-                            url, headers=headers, json=payload, timeout=self.timeout_sec
-                        )
-                        if resp.status_code >= 400:
-                            raise RuntimeError(
-                                f"HTTP {resp.status_code}：{resp.text[:200]}"
-                            )
+                try:
+                    async for attempt in AsyncRetrying(
+                        stop=stop_after_attempt(self.max_retries + 1),
+                        wait=wait_exponential(multiplier=0.6, max=10),
+                        retry=retry_if_exception_type(Exception),
+                        reraise=True,
+                    ):
+                        with attempt:
+                            try:
+                                resp = await client.post(
+                                    url, headers=headers, json=payload, timeout=self.timeout_sec
+                                )
+                                if resp.status_code >= 400:
+                                    raise RuntimeError(
+                                        f"HTTP {resp.status_code}：{resp.text[:200]}"
+                                    )
 
-                        try:
-                            data = resp.json()
-                        except ValueError as exc:
-                            raise RuntimeError(
-                                f"响应不是 JSON：{resp.text[:200]}"
-                            ) from exc
-                        if data.get("error"):
-                            raise RuntimeError(f"接口错误：{data.get('error')}")
-                        reply = (
-                            data.get("choices", [{}])[0]
-                            .get("message", {})
-                            .get("content", "")
-                        )
-                        reply = reply.strip()
-                        if not reply:
-                            raise RuntimeError("AI 返回内容为空。")
+                                try:
+                                    data = resp.json()
+                                except ValueError as exc:
+                                    raise RuntimeError(
+                                        f"响应不是 JSON：{resp.text[:200]}"
+                                    ) from exc
+                                if data.get("error"):
+                                    raise RuntimeError(f"接口错误：{data.get('error')}")
+                                reply = (
+                                    data.get("choices", [{}])[0]
+                                    .get("message", {})
+                                    .get("content", "")
+                                )
+                                reply = reply.strip()
+                                if not reply:
+                                    raise RuntimeError("AI 返回内容为空。")
 
-                        self._append_history(chat_id, user_text, reply)
-                        self._stats["successful_requests"] += 1
-                        if not future.done():
-                            future.set_result(reply)
-                        return reply
-                    except Exception as exc:
-                        last_error = exc
-                        wait = 0.6 * (1.5**attempt)
-                        logging.warning("AI 请求失败（第 %s 次）：%s", attempt + 1, exc)
-                        if attempt < self.max_retries:
-                            await asyncio.sleep(wait)
+                                self._append_history(chat_id, user_text, reply)
+                                self._stats["successful_requests"] += 1
+                                if not future.done():
+                                    future.set_result(reply)
+                                return reply
+                            except Exception as exc:
+                                logging.warning("AI 请求失败（第 %s 次）：%s", attempt.retry_state.attempt_number, exc)
+                                raise exc
 
-                logging.error("AI 请求多次失败：%s", last_error)
-                self._stats["failed_requests"] += 1
-                if not future.done():
-                    future.set_result(None)
-                return None
+                except Exception as last_error:
+                    logging.error("AI 请求多次失败：%s", last_error)
+                    self._stats["failed_requests"] += 1
+                    if not future.done():
+                        future.set_result(None)
+                    return None
         except Exception as e:
             if not future.done():
                 future.set_exception(e)
@@ -381,76 +393,113 @@ class AIClient:
                 if self.reasoning_effort:
                     payload["reasoning_effort"] = self.reasoning_effort
 
-                last_error: Optional[Exception] = None
                 sent_any = False
-                for attempt in range(self.max_retries + 1):
-                    reply_parts: List[str] = []
-                    try:
-                        async with client.stream(
-                            "POST",
-                            url,
-                            headers=headers,
-                            json=payload,
-                            timeout=self.timeout_sec,
-                        ) as resp:
-                            if resp.status_code >= 400:
-                                error_text = (await resp.aread())[:200]
-                                raise RuntimeError(
-                                    f"HTTP {resp.status_code}：{error_text}"
-                                )
-                            async for raw_line in resp.aiter_lines():
-                                if not raw_line:
-                                    continue
-                                line = raw_line.strip()
-                                if not line.startswith("data:"):
-                                    continue
-                                data_text = line[5:].strip()
-                                if data_text == "[DONE]":
-                                    break
-                                try:
-                                    data = json.loads(data_text)
-                                except ValueError:
-                                    continue
-                                delta = data.get("choices", [{}])[0].get("delta", {})
-                                chunk = delta.get("content")
-                                if chunk is None:
-                                    chunk = (
-                                        data.get("choices", [{}])[0]
-                                        .get("message", {})
-                                        .get("content")
+                try:
+                    async for attempt in AsyncRetrying(
+                        stop=stop_after_attempt(self.max_retries + 1),
+                        wait=wait_exponential(multiplier=0.6, max=10),
+                        retry=retry_if_exception_type(Exception),
+                        reraise=True,
+                    ):
+                        with attempt:
+                            reply_parts: List[str] = []
+                            try:
+                                async with client.stream(
+                                    "POST",
+                                    url,
+                                    headers=headers,
+                                    json=payload,
+                                    timeout=self.timeout_sec,
+                                ) as resp:
+                                    if resp.status_code >= 400:
+                                        error_text = (await resp.aread())[:200]
+                                        raise RuntimeError(
+                                            f"HTTP {resp.status_code}：{error_text}"
+                                        )
+                                    async for raw_line in resp.aiter_lines():
+                                        if not raw_line:
+                                            continue
+                                        line = raw_line.strip()
+                                        if not line.startswith("data:"):
+                                            continue
+                                        data_text = line[5:].strip()
+                                        if data_text == "[DONE]":
+                                            break
+                                        try:
+                                            data = json.loads(data_text)
+                                        except ValueError:
+                                            continue
+                                        delta = data.get("choices", [{}])[0].get("delta", {})
+                                        chunk = delta.get("content")
+                                        if chunk is None:
+                                            chunk = (
+                                                data.get("choices", [{}])[0]
+                                                .get("message", {})
+                                                .get("content")
+                                            )
+                                        if not chunk:
+                                            continue
+                                        reply_parts.append(chunk)
+                                        sent_any = True
+                                        yield chunk
+
+                                reply = "".join(reply_parts).strip()
+                                if not reply:
+                                    raise RuntimeError("AI 返回内容为空。")
+                                self._append_history(chat_id, user_text, reply)
+                                return
+                            except Exception as exc:
+                                if sent_any:
+                                    partial_reply = "".join(reply_parts).strip()
+                                    if partial_reply:
+                                        self._append_history(chat_id, user_text, partial_reply)
+                                    logging.warning(
+                                        "AI 流式请求中断，已输出部分内容，停止重试：%s", exc
                                     )
-                                if not chunk:
-                                    continue
-                                reply_parts.append(chunk)
-                                sent_any = True
-                                yield chunk
+                                    return
+                                logging.warning(
+                                    "AI 流式请求失败（第 %s 次）：%s",
+                                    attempt.retry_state.attempt_number,
+                                    exc,
+                                )
+                                raise exc
 
-                        reply = "".join(reply_parts).strip()
-                        if not reply:
-                            raise RuntimeError("AI 返回内容为空。")
-                        self._append_history(chat_id, user_text, reply)
-                        return
-                    except Exception as exc:
-                        last_error = exc
-                        if sent_any:
-                            partial_reply = "".join(reply_parts).strip()
-                            if partial_reply:
-                                self._append_history(chat_id, user_text, partial_reply)
-                            logging.warning(
-                                "AI 流式请求中断，已输出部分内容，停止重试：%s", exc
-                            )
-                            return
-                        wait = 0.6 * (1.5**attempt)
-                        logging.warning(
-                            "AI 流式请求失败（第 %s 次）：%s", attempt + 1, exc
-                        )
-                        if attempt < self.max_retries:
-                            await asyncio.sleep(wait)
-
-                logging.error("AI 流式请求多次失败：%s", last_error)
-                return
+                except Exception as last_error:
+                    logging.error("AI 流式请求多次失败：%s", last_error)
+                    return
 
         return _stream()
+
+    async def get_embedding(self, text: str) -> Optional[List[float]]:
+        """获取文本 Embedding 向量"""
+        # 请求去重
+        # ... (可以使用类似 generate_reply 的去重逻辑，但 embedding 通常很快)
+        if not self.embedding_model:
+            return None
+        
+        try:
+            url = f"{self.base_url}/embeddings"
+            headers = self._build_headers()
+            payload = {
+                "model": self.embedding_model, # 使用配置的模型
+                "input": text
+            }
+            
+            client = _get_shared_client()
+            resp = await client.post(
+                url, headers=headers, json=payload, timeout=self.timeout_sec
+            )
+            
+            if resp.status_code >= 400:
+                logging.warning(f"Embedding failed: {resp.status_code} {resp.text[:100]}")
+                return None
+                
+            data = resp.json()
+            return data["data"][0]["embedding"]
+            
+        except Exception as e:
+            logging.error(f"Embedding error: {e}")
+            return None
 
     def _normalize_memory_context(
         self, memory_context: Optional[Iterable[dict]]
@@ -479,6 +528,7 @@ class AIClient:
         user_text: str,
         system_prompt: Optional[str] = None,
         memory_context: Optional[Iterable[dict]] = None,
+        image_path: Optional[str] = None,
     ) -> List[dict]:
         self._prune_histories()
         history = list(self._histories.get(chat_id, deque()))
@@ -520,7 +570,28 @@ class AIClient:
                 messages.append(memory_header)
             messages.extend(memory_messages)
         messages.extend(history)
-        messages.append({"role": "user", "content": user_text})
+
+        if image_path:
+            # 引入图片处理
+            from ..utils.image_processing import process_image_for_api
+            
+            base64_image = process_image_for_api(image_path)
+            
+            if base64_image:
+                content_payload = [
+                    {"type": "text", "text": user_text or "这张图片里有什么？"},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/jpeg;base64,{base64_image}"
+                        }
+                    }
+                ]
+                messages.append({"role": "user", "content": content_payload})
+            else:
+                messages.append({"role": "user", "content": user_text})
+        else:
+            messages.append({"role": "user", "content": user_text})
         return messages
 
     def _append_history(self, chat_id: str, user_text: str, reply: str) -> None:

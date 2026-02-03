@@ -349,7 +349,12 @@ export class LogsPage extends PageController {
     _startAutoRefresh() {
         this._stopAutoRefresh();
         if (this.getState('logs.autoRefresh') === false) return;
-        this._refreshInterval = setInterval(() => this._loadLogs(), this._refreshIntervalMs);
+        this._refreshInterval = setInterval(() => {
+            // 页面不可见时不刷新，节省资源
+            if (!document.hidden) {
+                this._loadLogs();
+            }
+        }, this._refreshIntervalMs);
     }
 
     _stopAutoRefresh() {

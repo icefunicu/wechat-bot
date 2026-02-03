@@ -96,7 +96,7 @@ export class SettingsPage extends PageController {
             'DeepSeek': ['deepseek-chat', 'deepseek-coder'],
             'SiliconFlow': ['deepseek-ai/DeepSeek-V3', 'deepseek-ai/DeepSeek-R1', 'deepseek-ai/DeepSeek-V2.5'],
             'Moonshot (Kimi)': ['moonshot-v1-8k', 'moonshot-v1-32k', 'moonshot-v1-128k'],
-            'Zhipu (智谱)': ['glm-4', 'glm-4-air', 'glm-4-flash', 'glm-3-turbo'],
+            'Zhipu (智谱)': ['glm-4v', 'glm-4v-plus', 'glm-4', 'glm-4-air', 'glm-4-flash', 'glm-3-turbo'],
             'Qwen (通义千问)': ['qwen-turbo', 'qwen-plus', 'qwen-max'],
             'Groq': ['llama3-70b-8192', 'mixtral-8x7b-32768'],
             'Ollama': ['llama3', 'mistral', 'qwen'],
@@ -313,6 +313,383 @@ export class SettingsPage extends PageController {
         this.$('#setting-whitelist-enabled').checked = !!bot.whitelist_enabled;
         this.$('#setting-whitelist').value = (bot.whitelist || []).join('\n');
 
+        const systemPrompt = this.$('#setting-system-prompt');
+        if (systemPrompt) {
+            systemPrompt.value = bot.system_prompt || '';
+        }
+        const overridesInput = this.$('#setting-system-prompt-overrides');
+        if (overridesInput) {
+            const overrides = bot.system_prompt_overrides || {};
+            const lines = Object.entries(overrides).map(([key, value]) => {
+                const text = String(value ?? '').replace(/\n/g, '\\n');
+                return `${key}|${text}`;
+            });
+            overridesInput.value = lines.join('\n');
+        }
+
+        const emojiPolicy = this.$('#setting-emoji-policy');
+        if (emojiPolicy) {
+            emojiPolicy.value = bot.emoji_policy || 'mixed';
+        }
+        const emojiReplacements = this.$('#setting-emoji-replacements');
+        if (emojiReplacements) {
+            const replacements = bot.emoji_replacements || {};
+            const lines = Object.entries(replacements).map(([key, value]) => `${key}=${value}`);
+            emojiReplacements.value = lines.join('\n');
+        }
+        const voiceToText = this.$('#setting-voice-to-text');
+        if (voiceToText) {
+            voiceToText.checked = bot.voice_to_text !== false;
+        }
+        const voiceFailReply = this.$('#setting-voice-to-text-fail-reply');
+        if (voiceFailReply) {
+            voiceFailReply.value = bot.voice_to_text_fail_reply || '';
+        }
+
+        const memoryDbPath = this.$('#setting-memory-db-path');
+        if (memoryDbPath) {
+            memoryDbPath.value = bot.memory_db_path || '';
+        }
+        const memoryContextLimit = this.$('#setting-memory-context-limit');
+        if (memoryContextLimit) {
+            memoryContextLimit.value = bot.memory_context_limit ?? 0;
+        }
+        const memoryTtl = this.$('#setting-memory-ttl-sec');
+        if (memoryTtl) {
+            memoryTtl.value = bot.memory_ttl_sec ?? '';
+        }
+        const memoryCleanup = this.$('#setting-memory-cleanup-interval-sec');
+        if (memoryCleanup) {
+            memoryCleanup.value = bot.memory_cleanup_interval_sec ?? 0;
+        }
+        const memorySeedFirst = this.$('#setting-memory-seed-on-first-reply');
+        if (memorySeedFirst) {
+            memorySeedFirst.checked = bot.memory_seed_on_first_reply !== false;
+        }
+        const memorySeedLimit = this.$('#setting-memory-seed-limit');
+        if (memorySeedLimit) {
+            memorySeedLimit.value = bot.memory_seed_limit ?? 0;
+        }
+        const memorySeedLoadMore = this.$('#setting-memory-seed-load-more');
+        if (memorySeedLoadMore) {
+            memorySeedLoadMore.value = bot.memory_seed_load_more ?? 0;
+        }
+        const memorySeedLoadMoreInterval = this.$('#setting-memory-seed-load-more-interval-sec');
+        if (memorySeedLoadMoreInterval) {
+            memorySeedLoadMoreInterval.value = bot.memory_seed_load_more_interval_sec ?? 0;
+        }
+        const memorySeedGroup = this.$('#setting-memory-seed-group');
+        if (memorySeedGroup) {
+            memorySeedGroup.checked = !!bot.memory_seed_group;
+        }
+        const contextRounds = this.$('#setting-context-rounds');
+        if (contextRounds) {
+            contextRounds.value = bot.context_rounds ?? 0;
+        }
+        const contextMaxTokens = this.$('#setting-context-max-tokens');
+        if (contextMaxTokens) {
+            contextMaxTokens.value = bot.context_max_tokens ?? 0;
+        }
+        const historyMaxChats = this.$('#setting-history-max-chats');
+        if (historyMaxChats) {
+            historyMaxChats.value = bot.history_max_chats ?? 0;
+        }
+        const historyTtl = this.$('#setting-history-ttl-sec');
+        if (historyTtl) {
+            historyTtl.value = bot.history_ttl_sec ?? '';
+        }
+        const historyLogInterval = this.$('#setting-history-log-interval-sec');
+        if (historyLogInterval) {
+            historyLogInterval.value = bot.history_log_interval_sec ?? 0;
+        }
+
+        const pollInterval = this.$('#setting-poll-interval-sec');
+        if (pollInterval) {
+            pollInterval.value = bot.poll_interval_sec ?? 0;
+        }
+        const pollMin = this.$('#setting-poll-interval-min-sec');
+        if (pollMin) {
+            pollMin.value = bot.poll_interval_min_sec ?? 0;
+        }
+        const pollMax = this.$('#setting-poll-interval-max-sec');
+        if (pollMax) {
+            pollMax.value = bot.poll_interval_max_sec ?? 0;
+        }
+        const pollBackoff = this.$('#setting-poll-interval-backoff-factor');
+        if (pollBackoff) {
+            pollBackoff.value = bot.poll_interval_backoff_factor ?? 0;
+        }
+        const minReplyInterval = this.$('#setting-min-reply-interval-sec');
+        if (minReplyInterval) {
+            minReplyInterval.value = bot.min_reply_interval_sec ?? 0;
+        }
+        const randomDelayMin = this.$('#setting-random-delay-min-sec');
+        const randomDelayMax = this.$('#setting-random-delay-max-sec');
+        if (Array.isArray(bot.random_delay_range_sec)) {
+            if (randomDelayMin) randomDelayMin.value = bot.random_delay_range_sec[0] ?? 0;
+            if (randomDelayMax) randomDelayMax.value = bot.random_delay_range_sec[1] ?? 0;
+        } else {
+            if (randomDelayMin) randomDelayMin.value = 0;
+            if (randomDelayMax) randomDelayMax.value = 0;
+        }
+
+        const mergeSec = this.$('#setting-merge-user-messages-sec');
+        if (mergeSec) {
+            mergeSec.value = bot.merge_user_messages_sec ?? 0;
+        }
+        const mergeMaxWait = this.$('#setting-merge-user-messages-max-wait-sec');
+        if (mergeMaxWait) {
+            mergeMaxWait.value = bot.merge_user_messages_max_wait_sec ?? 0;
+        }
+        const replyChunkSize = this.$('#setting-reply-chunk-size');
+        if (replyChunkSize) {
+            replyChunkSize.value = bot.reply_chunk_size ?? 0;
+        }
+        const replyChunkDelay = this.$('#setting-reply-chunk-delay-sec');
+        if (replyChunkDelay) {
+            replyChunkDelay.value = bot.reply_chunk_delay_sec ?? 0;
+        }
+        const maxConcurrency = this.$('#setting-max-concurrency');
+        if (maxConcurrency) {
+            maxConcurrency.value = bot.max_concurrency ?? 0;
+        }
+
+        const naturalSplitEnabled = this.$('#setting-natural-split-enabled');
+        if (naturalSplitEnabled) {
+            naturalSplitEnabled.checked = !!bot.natural_split_enabled;
+        }
+        const naturalMin = this.$('#setting-natural-split-min-chars');
+        if (naturalMin) {
+            naturalMin.value = bot.natural_split_min_chars ?? 0;
+        }
+        const naturalMax = this.$('#setting-natural-split-max-chars');
+        if (naturalMax) {
+            naturalMax.value = bot.natural_split_max_chars ?? 0;
+        }
+        const naturalSegments = this.$('#setting-natural-split-max-segments');
+        if (naturalSegments) {
+            naturalSegments.value = bot.natural_split_max_segments ?? 0;
+        }
+        const naturalDelayMin = this.$('#setting-natural-split-delay-min-sec');
+        const naturalDelayMax = this.$('#setting-natural-split-delay-max-sec');
+        if (Array.isArray(bot.natural_split_delay_sec)) {
+            if (naturalDelayMin) naturalDelayMin.value = bot.natural_split_delay_sec[0] ?? 0;
+            if (naturalDelayMax) naturalDelayMax.value = bot.natural_split_delay_sec[1] ?? 0;
+        } else {
+            if (naturalDelayMin) naturalDelayMin.value = 0;
+            if (naturalDelayMax) naturalDelayMax.value = 0;
+        }
+
+        const streamBuffer = this.$('#setting-stream-buffer-chars');
+        if (streamBuffer) {
+            streamBuffer.value = bot.stream_buffer_chars ?? 0;
+        }
+        const streamChunkMax = this.$('#setting-stream-chunk-max-chars');
+        if (streamChunkMax) {
+            streamChunkMax.value = bot.stream_chunk_max_chars ?? 0;
+        }
+
+        const configReload = this.$('#setting-config-reload-sec');
+        if (configReload) {
+            configReload.value = bot.config_reload_sec ?? 0;
+        }
+        const reloadClient = this.$('#setting-reload-ai-client-on-change');
+        if (reloadClient) {
+            reloadClient.checked = bot.reload_ai_client_on_change !== false;
+        }
+        const reloadModule = this.$('#setting-reload-ai-client-module');
+        if (reloadModule) {
+            reloadModule.checked = !!bot.reload_ai_client_module;
+        }
+        const keepaliveIdle = this.$('#setting-keepalive-idle-sec');
+        if (keepaliveIdle) {
+            keepaliveIdle.value = bot.keepalive_idle_sec ?? 0;
+        }
+        const reconnectRetries = this.$('#setting-reconnect-max-retries');
+        if (reconnectRetries) {
+            reconnectRetries.value = bot.reconnect_max_retries ?? 0;
+        }
+        const reconnectBackoff = this.$('#setting-reconnect-backoff-sec');
+        if (reconnectBackoff) {
+            reconnectBackoff.value = bot.reconnect_backoff_sec ?? 0;
+        }
+        const reconnectMaxDelay = this.$('#setting-reconnect-max-delay-sec');
+        if (reconnectMaxDelay) {
+            reconnectMaxDelay.value = bot.reconnect_max_delay_sec ?? 0;
+        }
+
+        const groupIncludeSender = this.$('#setting-group-include-sender');
+        if (groupIncludeSender) {
+            groupIncludeSender.checked = !!bot.group_include_sender;
+        }
+        const sendExactMatch = this.$('#setting-send-exact-match');
+        if (sendExactMatch) {
+            sendExactMatch.checked = !!bot.send_exact_match;
+        }
+        const sendFallback = this.$('#setting-send-fallback-current-chat');
+        if (sendFallback) {
+            sendFallback.checked = !!bot.send_fallback_current_chat;
+        }
+
+        const filterMute = this.$('#setting-filter-mute');
+        if (filterMute) {
+            filterMute.checked = !!bot.filter_mute;
+        }
+        const ignoreOfficial = this.$('#setting-ignore-official');
+        if (ignoreOfficial) {
+            ignoreOfficial.checked = !!bot.ignore_official;
+        }
+        const ignoreService = this.$('#setting-ignore-service');
+        if (ignoreService) {
+            ignoreService.checked = !!bot.ignore_service;
+        }
+        const ignoreNames = this.$('#setting-ignore-names');
+        if (ignoreNames) {
+            ignoreNames.value = (bot.ignore_names || []).join('\n');
+        }
+        const ignoreKeywords = this.$('#setting-ignore-keywords');
+        if (ignoreKeywords) {
+            ignoreKeywords.value = (bot.ignore_keywords || []).join('\n');
+        }
+
+        const personalizationEnabled = this.$('#setting-personalization-enabled');
+        if (personalizationEnabled) {
+            personalizationEnabled.checked = !!bot.personalization_enabled;
+        }
+        const profileUpdateFrequency = this.$('#setting-profile-update-frequency');
+        if (profileUpdateFrequency) {
+            profileUpdateFrequency.value = bot.profile_update_frequency ?? 0;
+        }
+        const rememberFactsEnabled = this.$('#setting-remember-facts-enabled');
+        if (rememberFactsEnabled) {
+            rememberFactsEnabled.checked = !!bot.remember_facts_enabled;
+        }
+        const maxContextFacts = this.$('#setting-max-context-facts');
+        if (maxContextFacts) {
+            maxContextFacts.value = bot.max_context_facts ?? 0;
+        }
+        const profileInject = this.$('#setting-profile-inject-in-prompt');
+        if (profileInject) {
+            profileInject.checked = !!bot.profile_inject_in_prompt;
+        }
+
+        const controlCommands = this.$('#setting-control-commands-enabled');
+        if (controlCommands) {
+            controlCommands.checked = !!bot.control_commands_enabled;
+        }
+        const controlPrefix = this.$('#setting-control-command-prefix');
+        if (controlPrefix) {
+            controlPrefix.value = bot.control_command_prefix ?? '';
+        }
+        const controlReplyVisible = this.$('#setting-control-reply-visible');
+        if (controlReplyVisible) {
+            controlReplyVisible.checked = bot.control_reply_visible !== false;
+        }
+        const controlAllowedUsers = this.$('#setting-control-allowed-users');
+        if (controlAllowedUsers) {
+            controlAllowedUsers.value = (bot.control_allowed_users || []).join('\n');
+        }
+
+        const quietEnabled = this.$('#setting-quiet-hours-enabled');
+        if (quietEnabled) {
+            quietEnabled.checked = !!bot.quiet_hours_enabled;
+        }
+        const quietStart = this.$('#setting-quiet-hours-start');
+        if (quietStart) {
+            quietStart.value = bot.quiet_hours_start ?? '';
+        }
+        const quietEnd = this.$('#setting-quiet-hours-end');
+        if (quietEnd) {
+            quietEnd.value = bot.quiet_hours_end ?? '';
+        }
+        const quietReply = this.$('#setting-quiet-hours-reply');
+        if (quietReply) {
+            quietReply.value = bot.quiet_hours_reply ?? '';
+        }
+
+        const usageTracking = this.$('#setting-usage-tracking-enabled');
+        if (usageTracking) {
+            usageTracking.checked = !!bot.usage_tracking_enabled;
+        }
+        const dailyTokenLimit = this.$('#setting-daily-token-limit');
+        if (dailyTokenLimit) {
+            dailyTokenLimit.value = bot.daily_token_limit ?? 0;
+        }
+        const tokenWarning = this.$('#setting-token-warning-threshold');
+        if (tokenWarning) {
+            tokenWarning.value = bot.token_warning_threshold ?? 0;
+        }
+
+        const emotionEnabled = this.$('#setting-emotion-detection-enabled');
+        if (emotionEnabled) {
+            emotionEnabled.checked = !!bot.emotion_detection_enabled;
+        }
+        const emotionMode = this.$('#setting-emotion-detection-mode');
+        if (emotionMode) {
+            emotionMode.value = bot.emotion_detection_mode || 'keywords';
+        }
+        const emotionInject = this.$('#setting-emotion-inject-in-prompt');
+        if (emotionInject) {
+            emotionInject.checked = !!bot.emotion_inject_in_prompt;
+        }
+        const emotionLog = this.$('#setting-emotion-log-enabled');
+        if (emotionLog) {
+            emotionLog.checked = !!bot.emotion_log_enabled;
+        }
+
+        const loggingCfg = config.logging || {};
+        const logLevel = this.$('#setting-log-level');
+        if (logLevel) {
+            logLevel.value = loggingCfg.level || 'INFO';
+        }
+        const logFormat = this.$('#setting-log-format');
+        if (logFormat) {
+            logFormat.value = loggingCfg.format || 'text';
+        }
+        const logFile = this.$('#setting-log-file');
+        if (logFile) {
+            logFile.value = loggingCfg.file || '';
+        }
+        const logMaxBytes = this.$('#setting-log-max-bytes');
+        if (logMaxBytes) {
+            logMaxBytes.value = loggingCfg.max_bytes ?? 0;
+        }
+        const logBackup = this.$('#setting-log-backup-count');
+        if (logBackup) {
+            logBackup.value = loggingCfg.backup_count ?? 0;
+        }
+        const logMessageContent = this.$('#setting-log-message-content');
+        if (logMessageContent) {
+            logMessageContent.checked = !!loggingCfg.log_message_content;
+        }
+        const logReplyContent = this.$('#setting-log-reply-content');
+        if (logReplyContent) {
+            logReplyContent.checked = !!loggingCfg.log_reply_content;
+        }
+
+        const quoteMode = this.$('#setting-reply-quote-mode');
+        if (quoteMode) {
+            quoteMode.value = bot.reply_quote_mode || 'wechat';
+        }
+        const quoteTemplate = this.$('#setting-reply-quote-template');
+        if (quoteTemplate) {
+            quoteTemplate.value = bot.reply_quote_template || '引用：{content}\n';
+        }
+        const quoteMaxChars = this.$('#setting-reply-quote-max-chars');
+        if (quoteMaxChars) {
+            const maxChars = bot.reply_quote_max_chars ?? 120;
+            quoteMaxChars.value = Number.isFinite(maxChars) ? String(maxChars) : '120';
+        }
+        const quoteTimeout = this.$('#setting-reply-quote-timeout');
+        if (quoteTimeout) {
+            const timeoutSec = bot.reply_quote_timeout_sec ?? 5.0;
+            quoteTimeout.value = Number.isFinite(timeoutSec) ? String(timeoutSec) : '5';
+        }
+        const quoteFallback = this.$('#setting-reply-quote-fallback');
+        if (quoteFallback) {
+            quoteFallback.checked = bot.reply_quote_fallback_to_text !== false;
+        }
+
         // 渲染预设列表
         this._renderPresetList(api.presets || {});
     }
@@ -322,20 +699,181 @@ export class SettingsPage extends PageController {
 
         try {
             // 收集表单数据
+            const parseNumber = (value) => {
+                if (value === '' || value == null) return undefined;
+                const num = Number(value);
+                return Number.isNaN(num) ? undefined : num;
+            };
+            const parseNumberOrNull = (value) => {
+                if (value === '' || value == null) return null;
+                const num = Number(value);
+                return Number.isNaN(num) ? null : num;
+            };
+            const parseLines = (value) => value.split('\n').map(s => s.trim()).filter(s => s);
+            const parseRange = (minVal, maxVal) => {
+                if (minVal == null || maxVal == null) return undefined;
+                const minNum = Number(minVal);
+                const maxNum = Number(maxVal);
+                if (Number.isNaN(minNum) || Number.isNaN(maxNum)) return undefined;
+                return [minNum, maxNum];
+            };
+
+            const quoteMaxCharsRaw = this.$('#setting-reply-quote-max-chars')?.value;
+            const quoteTimeoutRaw = this.$('#setting-reply-quote-timeout')?.value;
+            const quoteMaxChars = quoteMaxCharsRaw === '' || quoteMaxCharsRaw == null ? undefined : Number(quoteMaxCharsRaw);
+            const quoteTimeoutSec = quoteTimeoutRaw === '' || quoteTimeoutRaw == null ? undefined : Number(quoteTimeoutRaw);
+
+            const overridesInput = this.$('#setting-system-prompt-overrides')?.value || '';
+            const overridesLines = parseLines(overridesInput);
+            const overrides = {};
+            overridesLines.forEach(line => {
+                const idx = line.indexOf('|');
+                if (idx <= 0) return;
+                const key = line.slice(0, idx).trim();
+                const value = line.slice(idx + 1).trim().replace(/\\n/g, '\n');
+                if (key) overrides[key] = value;
+            });
+
+            const emojiReplacementInput = this.$('#setting-emoji-replacements')?.value || '';
+            const emojiReplacementLines = parseLines(emojiReplacementInput);
+            const emojiReplacements = {};
+            emojiReplacementLines.forEach(line => {
+                const idx = line.indexOf('=');
+                if (idx <= 0) return;
+                const key = line.slice(0, idx).trim();
+                const value = line.slice(idx + 1).trim();
+                if (key) emojiReplacements[key] = value;
+            });
+
             const botSettings = {
                 self_name: this.$('#setting-self-name').value,
+                system_prompt: this.$('#setting-system-prompt')?.value ?? '',
+                system_prompt_overrides: overrides,
                 reply_suffix: this.$('#setting-reply-suffix').value,
+                emoji_policy: this.$('#setting-emoji-policy')?.value,
+                emoji_replacements: emojiReplacements,
+                stream_reply: this.$('#setting-stream-reply')?.checked,
                 group_reply_only_when_at: this.$('#setting-group-at-only').checked,
                 whitelist_enabled: this.$('#setting-whitelist-enabled').checked,
-                whitelist: this.$('#setting-whitelist').value.split('\n').map(s => s.trim()).filter(s => s)
+                whitelist: parseLines(this.$('#setting-whitelist').value),
+                voice_to_text: this.$('#setting-voice-to-text')?.checked,
+                voice_to_text_fail_reply: this.$('#setting-voice-to-text-fail-reply')?.value,
+                memory_db_path: this.$('#setting-memory-db-path')?.value,
+                memory_context_limit: parseNumber(this.$('#setting-memory-context-limit')?.value),
+                memory_ttl_sec: parseNumberOrNull(this.$('#setting-memory-ttl-sec')?.value),
+                memory_cleanup_interval_sec: parseNumber(this.$('#setting-memory-cleanup-interval-sec')?.value),
+                memory_seed_on_first_reply: this.$('#setting-memory-seed-on-first-reply')?.checked,
+                memory_seed_limit: parseNumber(this.$('#setting-memory-seed-limit')?.value),
+                memory_seed_load_more: parseNumber(this.$('#setting-memory-seed-load-more')?.value),
+                memory_seed_load_more_interval_sec: parseNumber(this.$('#setting-memory-seed-load-more-interval-sec')?.value),
+                memory_seed_group: this.$('#setting-memory-seed-group')?.checked,
+                context_rounds: parseNumber(this.$('#setting-context-rounds')?.value),
+                context_max_tokens: parseNumber(this.$('#setting-context-max-tokens')?.value),
+                history_max_chats: parseNumber(this.$('#setting-history-max-chats')?.value),
+                history_ttl_sec: parseNumberOrNull(this.$('#setting-history-ttl-sec')?.value),
+                history_log_interval_sec: parseNumber(this.$('#setting-history-log-interval-sec')?.value),
+                poll_interval_sec: parseNumber(this.$('#setting-poll-interval-sec')?.value),
+                poll_interval_min_sec: parseNumber(this.$('#setting-poll-interval-min-sec')?.value),
+                poll_interval_max_sec: parseNumber(this.$('#setting-poll-interval-max-sec')?.value),
+                poll_interval_backoff_factor: parseNumber(this.$('#setting-poll-interval-backoff-factor')?.value),
+                min_reply_interval_sec: parseNumber(this.$('#setting-min-reply-interval-sec')?.value),
+                merge_user_messages_sec: parseNumber(this.$('#setting-merge-user-messages-sec')?.value),
+                merge_user_messages_max_wait_sec: parseNumber(this.$('#setting-merge-user-messages-max-wait-sec')?.value),
+                reply_chunk_size: parseNumber(this.$('#setting-reply-chunk-size')?.value),
+                reply_chunk_delay_sec: parseNumber(this.$('#setting-reply-chunk-delay-sec')?.value),
+                max_concurrency: parseNumber(this.$('#setting-max-concurrency')?.value),
+                natural_split_enabled: this.$('#setting-natural-split-enabled')?.checked,
+                natural_split_min_chars: parseNumber(this.$('#setting-natural-split-min-chars')?.value),
+                natural_split_max_chars: parseNumber(this.$('#setting-natural-split-max-chars')?.value),
+                natural_split_max_segments: parseNumber(this.$('#setting-natural-split-max-segments')?.value),
+                stream_buffer_chars: parseNumber(this.$('#setting-stream-buffer-chars')?.value),
+                stream_chunk_max_chars: parseNumber(this.$('#setting-stream-chunk-max-chars')?.value),
+                config_reload_sec: parseNumber(this.$('#setting-config-reload-sec')?.value),
+                reload_ai_client_on_change: this.$('#setting-reload-ai-client-on-change')?.checked,
+                reload_ai_client_module: this.$('#setting-reload-ai-client-module')?.checked,
+                keepalive_idle_sec: parseNumber(this.$('#setting-keepalive-idle-sec')?.value),
+                reconnect_max_retries: parseNumber(this.$('#setting-reconnect-max-retries')?.value),
+                reconnect_backoff_sec: parseNumber(this.$('#setting-reconnect-backoff-sec')?.value),
+                reconnect_max_delay_sec: parseNumber(this.$('#setting-reconnect-max-delay-sec')?.value),
+                group_include_sender: this.$('#setting-group-include-sender')?.checked,
+                send_exact_match: this.$('#setting-send-exact-match')?.checked,
+                send_fallback_current_chat: this.$('#setting-send-fallback-current-chat')?.checked,
+                filter_mute: this.$('#setting-filter-mute')?.checked,
+                ignore_official: this.$('#setting-ignore-official')?.checked,
+                ignore_service: this.$('#setting-ignore-service')?.checked,
+                ignore_names: parseLines(this.$('#setting-ignore-names')?.value || ''),
+                ignore_keywords: parseLines(this.$('#setting-ignore-keywords')?.value || ''),
+                personalization_enabled: this.$('#setting-personalization-enabled')?.checked,
+                profile_update_frequency: parseNumber(this.$('#setting-profile-update-frequency')?.value),
+                remember_facts_enabled: this.$('#setting-remember-facts-enabled')?.checked,
+                max_context_facts: parseNumber(this.$('#setting-max-context-facts')?.value),
+                profile_inject_in_prompt: this.$('#setting-profile-inject-in-prompt')?.checked,
+                control_commands_enabled: this.$('#setting-control-commands-enabled')?.checked,
+                control_command_prefix: this.$('#setting-control-command-prefix')?.value,
+                control_allowed_users: parseLines(this.$('#setting-control-allowed-users')?.value || ''),
+                control_reply_visible: this.$('#setting-control-reply-visible')?.checked,
+                quiet_hours_enabled: this.$('#setting-quiet-hours-enabled')?.checked,
+                quiet_hours_start: this.$('#setting-quiet-hours-start')?.value,
+                quiet_hours_end: this.$('#setting-quiet-hours-end')?.value,
+                quiet_hours_reply: this.$('#setting-quiet-hours-reply')?.value,
+                usage_tracking_enabled: this.$('#setting-usage-tracking-enabled')?.checked,
+                daily_token_limit: parseNumber(this.$('#setting-daily-token-limit')?.value),
+                token_warning_threshold: parseNumber(this.$('#setting-token-warning-threshold')?.value),
+                emotion_detection_enabled: this.$('#setting-emotion-detection-enabled')?.checked,
+                emotion_detection_mode: this.$('#setting-emotion-detection-mode')?.value,
+                emotion_inject_in_prompt: this.$('#setting-emotion-inject-in-prompt')?.checked,
+                emotion_log_enabled: this.$('#setting-emotion-log-enabled')?.checked
+            };
+
+            const randomDelay = parseRange(
+                this.$('#setting-random-delay-min-sec')?.value,
+                this.$('#setting-random-delay-max-sec')?.value
+            );
+            if (randomDelay) botSettings.random_delay_range_sec = randomDelay;
+
+            const naturalDelay = parseRange(
+                this.$('#setting-natural-split-delay-min-sec')?.value,
+                this.$('#setting-natural-split-delay-max-sec')?.value
+            );
+            if (naturalDelay) botSettings.natural_split_delay_sec = naturalDelay;
+
+            const replyQuoteMode = this.$('#setting-reply-quote-mode')?.value;
+            if (replyQuoteMode) botSettings.reply_quote_mode = replyQuoteMode;
+
+            const replyQuoteTemplate = this.$('#setting-reply-quote-template')?.value;
+            if (replyQuoteTemplate != null) botSettings.reply_quote_template = replyQuoteTemplate;
+
+            if (quoteMaxChars !== undefined && !Number.isNaN(quoteMaxChars)) {
+                botSettings.reply_quote_max_chars = quoteMaxChars;
+            }
+            if (quoteTimeoutSec !== undefined && !Number.isNaN(quoteTimeoutSec)) {
+                botSettings.reply_quote_timeout_sec = quoteTimeoutSec;
+            }
+            const quoteFallback = this.$('#setting-reply-quote-fallback');
+            if (quoteFallback) {
+                botSettings.reply_quote_fallback_to_text = quoteFallback.checked;
+            }
+
+            const loggingSettings = {
+                level: this.$('#setting-log-level')?.value,
+                format: this.$('#setting-log-format')?.value,
+                file: this.$('#setting-log-file')?.value,
+                max_bytes: parseNumber(this.$('#setting-log-max-bytes')?.value),
+                backup_count: parseNumber(this.$('#setting-log-backup-count')?.value),
+                log_message_content: this.$('#setting-log-message-content')?.checked,
+                log_reply_content: this.$('#setting-log-reply-content')?.checked
             };
 
             // 合并到当前配置
-            const newConfig = {
+            let newConfig = {
                 ...this.currentConfig,
                 bot: {
                     ...this.currentConfig.bot,
                     ...botSettings
+                },
+                logging: {
+                    ...this.currentConfig.logging,
+                    ...loggingSettings
                 }
             };
 

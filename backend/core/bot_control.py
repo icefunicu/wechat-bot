@@ -360,12 +360,26 @@ class UsageTracker:
     
     def __init__(self, db_path: str = "usage_history.db"):
         self.db_path = db_path
+        self._lock = threading.RLock()
+        self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self._init_db()
+
+    def __del__(self):
+        """析构时关闭连接"""
+        self.close()
+
+    def close(self):
+        """关闭数据库连接"""
+        if hasattr(self, '_conn'):
+            try:
+                self._conn.close()
+            except Exception:
+                pass
     
     def _init_db(self) -> None:
         """初始化数据库"""
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
+        with self._lock:
+            self._conn.execute("""
                 CREATE TABLE IF NOT EXISTS usage_log (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     timestamp REAL NOT NULL,
@@ -377,11 +391,11 @@ class UsageTracker:
                     total_tokens INTEGER DEFAULT 0
                 )
             """)
-            conn.execute("""
+            self._conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_usage_date 
                 ON usage_log(date)
             """)
-            conn.commit()
+            self._conn.commit()
     
     def log_usage(
         self,
@@ -395,8 +409,8 @@ class UsageTracker:
         date = datetime.now().strftime("%Y-%m-%d")
         total = prompt_tokens + completion_tokens
         
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute(
+        with self._lock:
+            self._conn.execute(
                 """
                 INSERT INTO usage_log 
                 (timestamp, date, chat_id, model, prompt_tokens, completion_tokens, total_tokens)
@@ -404,7 +418,7 @@ class UsageTracker:
                 """,
                 (now, date, chat_id, model, prompt_tokens, completion_tokens, total),
             )
-            conn.commit()
+            self._conn.commit()
         
         # 更新全局状态
         state = get_bot_state()
@@ -415,8 +429,8 @@ class UsageTracker:
         if date is None:
             date = datetime.now().strftime("%Y-%m-%d")
         
-        with sqlite3.connect(self.db_path) as conn:
-            row = conn.execute(
+        with self._lock:
+            row = self._conn.execute(
                 """
                 SELECT 
                     COALESCE(SUM(prompt_tokens), 0),

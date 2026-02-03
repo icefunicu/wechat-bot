@@ -7,8 +7,8 @@ import logging
 from typing import Optional, Tuple, Any, List, Dict
 
 # 预编译的消息类型标记集合
-NON_TEXT_TYPE_MARKERS: frozenset = frozenset((
-    "image", "pic", "voice", "audio", "video", "file", "gif",
+NON_TEXT_TYPE_MARKERS = frozenset((
+    "voice", "audio", "video", "file", "gif",
     "emoji", "system", "location", "link", "merge", "card", "note", "tickle",
 ))
 VOICE_TYPE_MARKERS: frozenset = frozenset(("voice", "audio"))
@@ -154,6 +154,14 @@ EMOJI_PATTERN = re.compile(
     "]"
 )
 
+HUMANIZE_PATTERNS = [
+    re.compile(r"^作为(一个|一名)?(ai|人工智能|智能助手|助手|语言模型)[^。！？\n]*[。！？]?", re.I),
+    re.compile(r"(?:我是|身为|作为)(ai|人工智能|智能助手|助手|语言模型)[^。！？\n]*[。！？]?", re.I),
+    re.compile(r"(希望|很高兴).{0,10}(能|可以).{0,6}(帮到|帮助).{0,6}(你|您)[^。！？\n]*[。！？]?", re.I),
+    re.compile(r"(如果|如有).{0,10}(疑问|问题|需要).{0,12}(随时|欢迎|可以).{0,10}(提问|问我|联系我|告诉我)[^。！？\n]*[。！？]?", re.I),
+    re.compile(r"(如需|需要).{0,8}(更多|进一步).{0,6}(帮助|支持)[^。！？\n]*[。！？]?", re.I),
+]
+
 
 __all__ = [
     "NON_TEXT_TYPE_MARKERS",
@@ -171,6 +179,7 @@ __all__ = [
     "is_at_me",
     "strip_at_text",
     "build_reply_suffix",
+    "refine_reply_text",
     "sanitize_reply_text",
     "split_reply_chunks",
     "split_reply_naturally",
@@ -193,14 +202,34 @@ def split_group_message(text: str) -> Tuple[Optional[str], str]:
 
 
 def is_text_message(msg_type: Optional[str], content: str) -> bool:
-    """判断是否为纯文本消息（排除图片、语音、系统通知等）。"""
+    """判断是否为文本消息（包括图片，因为我们会处理）"""
     if not content or not isinstance(content, str):
         return False
     if msg_type is None:
         return True
     
-    text_type = str(msg_type).lower()
-    return not any(marker in text_type for marker in NON_TEXT_TYPE_MARKERS)
+    t = str(msg_type).lower()
+    
+    # 图片被视为文本消息的一种（为了通过过滤器）
+    if "image" in t or "pic" in t:
+        return True
+
+    for marker in NON_TEXT_TYPE_MARKERS:
+        if marker in t:
+            # 语音也是特殊情况，需要转录
+            if marker in ("voice", "audio"):
+                return False  # converters.py 会单独处理语音
+            return False
+            
+    return True
+
+
+def is_image_message(msg_type: Optional[str]) -> bool:
+    """判断是否为图片消息"""
+    if msg_type is None:
+        return False
+    t = str(msg_type).lower()
+    return "image" in t or "pic" in t
 
 
 def is_voice_message(msg_type: Optional[str]) -> bool:
@@ -251,6 +280,17 @@ def build_reply_suffix(template: str, model: str, alias: str) -> str:
     except Exception:
         logging.warning("reply_suffix 模板错误，已回退默认值。")
         return DEFAULT_SUFFIX.format(alias=alias or model, model=model)
+
+
+def refine_reply_text(text: str) -> str:
+    if not text:
+        return text
+    original = text
+    result = text.strip()
+    for pattern in HUMANIZE_PATTERNS:
+        result = pattern.sub("", result).strip()
+    result = re.sub(r"\n{3,}", "\n\n", result).strip()
+    return result if result else original
 
 
 def sanitize_reply_text(

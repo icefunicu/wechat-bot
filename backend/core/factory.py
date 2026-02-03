@@ -74,6 +74,7 @@ def build_ai_client(settings: Dict[str, Any], bot_cfg: Dict[str, Any]) -> AIClie
         ),
         reasoning_effort=as_optional_str(settings.get("reasoning_effort")),
         model_alias=settings.get("alias"),
+        embedding_model=as_optional_str(settings.get("embedding_model")), # 新增
         history_max_chats=as_int(
             bot_cfg.get("history_max_chats", 200), 200, min_value=1
         ),
@@ -121,6 +122,9 @@ async def select_ai_client(
         settings["base_url"] = base_url
         settings["model"] = model
         settings["api_key"] = api_key
+        # 传递 embedding_model
+        if "embedding_model" not in settings:
+             settings["embedding_model"] = str(api_cfg.get("embedding_model") or "")
 
         client = build_ai_client(settings, bot_cfg)
         logging.info("正在探测预设：%s", name)
@@ -199,6 +203,13 @@ def apply_ai_runtime_settings(
         ai_client.base_url = str(api_cfg.get("base_url") or ai_client.base_url).rstrip("/")
         ai_client.api_key = str(api_cfg.get("api_key") or ai_client.api_key)
         ai_client.model = str(api_cfg.get("model") or ai_client.model)
+        if "embedding_model" in api_cfg:
+            value = api_cfg.get("embedding_model")
+            if value is None:
+                ai_client.embedding_model = None
+            else:
+                v = str(value).strip()
+                ai_client.embedding_model = v if v else None
         if api_cfg.get("alias"):
             ai_client.model_alias = str(api_cfg.get("alias") or ai_client.model_alias)
     ai_client.timeout_sec = min(

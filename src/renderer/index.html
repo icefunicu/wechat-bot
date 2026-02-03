@@ -471,6 +471,524 @@
                     </div>
 
                     <div class="settings-card">
+                        <h2 class="settings-card-title">引用设置</h2>
+                        <div class="settings-grid">
+                            <div class="form-group">
+                                <label class="form-label">引用方式</label>
+                                <select class="form-input" id="setting-reply-quote-mode">
+                                    <option value="wechat">微信原生引用</option>
+                                    <option value="text">文本引用</option>
+                                    <option value="none">不引用</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">引用模板</label>
+                                <input type="text" id="setting-reply-quote-template" placeholder="引用：{content}">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">引用最大长度</label>
+                                <input type="number" id="setting-reply-quote-max-chars" min="0" step="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">原生引用超时（秒）</label>
+                                <input type="number" id="setting-reply-quote-timeout" min="0" step="0.1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-reply-quote-fallback">
+                                    <span class="form-checkbox-label">原生引用失败时降级文本引用</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-card">
+                        <h2 class="settings-card-title">系统提示</h2>
+                        <div class="form-group full-width">
+                            <label class="form-label">系统提示词</label>
+                            <textarea id="setting-system-prompt" rows="6"></textarea>
+                        </div>
+                        <div class="form-group full-width">
+                            <label class="form-label">会话提示覆盖（每行：会话名|提示词）</label>
+                            <textarea id="setting-system-prompt-overrides" rows="4"></textarea>
+                        </div>
+                    </div>
+
+                    <div class="settings-card">
+                        <h2 class="settings-card-title">表情与语音</h2>
+                        <div class="settings-grid">
+                            <div class="form-group">
+                                <label class="form-label">表情策略</label>
+                                <select class="form-input" id="setting-emoji-policy">
+                                    <option value="wechat">wechat</option>
+                                    <option value="strip">strip</option>
+                                    <option value="keep">keep</option>
+                                    <option value="mixed">mixed</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-voice-to-text">
+                                    <span class="form-checkbox-label">启用语音转文字</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">语音转写失败回复</label>
+                                <input type="text" id="setting-voice-to-text-fail-reply">
+                            </div>
+                            <div class="form-group full-width">
+                                <label class="form-label">表情替换（每行：原表情=替换表情）</label>
+                                <textarea id="setting-emoji-replacements" rows="3"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-card">
+                        <h2 class="settings-card-title">记忆与上下文</h2>
+                        <div class="settings-grid">
+                            <div class="form-group">
+                                <label class="form-label">记忆库路径</label>
+                                <input type="text" id="setting-memory-db-path">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">上下文条数</label>
+                                <input type="number" id="setting-memory-context-limit" min="0" step="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">记忆过期时间（秒，留空不过期）</label>
+                                <input type="number" id="setting-memory-ttl-sec" min="0" step="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">记忆清理间隔（秒）</label>
+                                <input type="number" id="setting-memory-cleanup-interval-sec" min="0" step="0.1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-memory-seed-on-first-reply">
+                                    <span class="form-checkbox-label">首次回复抓取历史</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">首次抓取条数</label>
+                                <input type="number" id="setting-memory-seed-limit" min="0" step="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">追加抓取次数</label>
+                                <input type="number" id="setting-memory-seed-load-more" min="0" step="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">追加抓取间隔（秒）</label>
+                                <input type="number" id="setting-memory-seed-load-more-interval-sec" min="0" step="0.1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-memory-seed-group">
+                                    <span class="form-checkbox-label">群聊也抓取历史</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">上下文轮数</label>
+                                <input type="number" id="setting-context-rounds" min="0" step="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">上下文 token 上限</label>
+                                <input type="number" id="setting-context-max-tokens" min="0" step="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">最大会话数</label>
+                                <input type="number" id="setting-history-max-chats" min="0" step="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">会话过期时间（秒，留空不过期）</label>
+                                <input type="number" id="setting-history-ttl-sec" min="0" step="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">历史日志间隔（秒）</label>
+                                <input type="number" id="setting-history-log-interval-sec" min="0" step="1">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-card">
+                        <h2 class="settings-card-title">轮询与延迟</h2>
+                        <div class="settings-grid">
+                            <div class="form-group">
+                                <label class="form-label">轮询间隔（秒）</label>
+                                <input type="number" id="setting-poll-interval-sec" min="0" step="0.01">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">轮询最短间隔（秒）</label>
+                                <input type="number" id="setting-poll-interval-min-sec" min="0" step="0.01">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">轮询最长间隔（秒）</label>
+                                <input type="number" id="setting-poll-interval-max-sec" min="0" step="0.01">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">退避倍数</label>
+                                <input type="number" id="setting-poll-interval-backoff-factor" min="0" step="0.1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">最小回复间隔（秒）</label>
+                                <input type="number" id="setting-min-reply-interval-sec" min="0" step="0.01">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">随机延迟最小值（秒）</label>
+                                <input type="number" id="setting-random-delay-min-sec" min="0" step="0.01">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">随机延迟最大值（秒）</label>
+                                <input type="number" id="setting-random-delay-max-sec" min="0" step="0.01">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-card">
+                        <h2 class="settings-card-title">合并与发送</h2>
+                        <div class="settings-grid">
+                            <div class="form-group">
+                                <label class="form-label">合并等待窗口（秒）</label>
+                                <input type="number" id="setting-merge-user-messages-sec" min="0" step="0.1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">合并最长等待（秒）</label>
+                                <input type="number" id="setting-merge-user-messages-max-wait-sec" min="0" step="0.1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">单条消息最大长度</label>
+                                <input type="number" id="setting-reply-chunk-size" min="1" step="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">分段发送间隔（秒）</label>
+                                <input type="number" id="setting-reply-chunk-delay-sec" min="0" step="0.1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">最大并发处理数</label>
+                                <input type="number" id="setting-max-concurrency" min="1" step="1">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-card">
+                        <h2 class="settings-card-title">智能分段</h2>
+                        <div class="settings-grid">
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-natural-split-enabled">
+                                    <span class="form-checkbox-label">启用智能分段</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">每段最少字符数</label>
+                                <input type="number" id="setting-natural-split-min-chars" min="0" step="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">每段最多字符数</label>
+                                <input type="number" id="setting-natural-split-max-chars" min="0" step="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">最大分段数</label>
+                                <input type="number" id="setting-natural-split-max-segments" min="1" step="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">段间延迟最小值（秒）</label>
+                                <input type="number" id="setting-natural-split-delay-min-sec" min="0" step="0.1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">段间延迟最大值（秒）</label>
+                                <input type="number" id="setting-natural-split-delay-max-sec" min="0" step="0.1">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-card">
+                        <h2 class="settings-card-title">流式回复</h2>
+                        <div class="settings-grid">
+                            <div class="form-group">
+                                <label class="form-label">缓冲阈值（字符）</label>
+                                <input type="number" id="setting-stream-buffer-chars" min="0" step="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">单段最大长度（字符）</label>
+                                <input type="number" id="setting-stream-chunk-max-chars" min="0" step="1">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-card">
+                        <h2 class="settings-card-title">热更新与重连</h2>
+                        <div class="settings-grid">
+                            <div class="form-group">
+                                <label class="form-label">配置热重载间隔（秒）</label>
+                                <input type="number" id="setting-config-reload-sec" min="0" step="0.1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-reload-ai-client-on-change">
+                                    <span class="form-checkbox-label">配置变更重载 AI 客户端</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-reload-ai-client-module">
+                                    <span class="form-checkbox-label">重载 ai_client 模块</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">空闲超时重连阈值（秒）</label>
+                                <input type="number" id="setting-keepalive-idle-sec" min="0" step="0.1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">重连最大重试次数</label>
+                                <input type="number" id="setting-reconnect-max-retries" min="0" step="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">重连退避基准（秒）</label>
+                                <input type="number" id="setting-reconnect-backoff-sec" min="0" step="0.1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">重连最大等待（秒）</label>
+                                <input type="number" id="setting-reconnect-max-delay-sec" min="0" step="0.1">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-card">
+                        <h2 class="settings-card-title">群聊与发送</h2>
+                        <div class="settings-grid">
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-group-include-sender">
+                                    <span class="form-checkbox-label">群聊回复包含发送者</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-send-exact-match">
+                                    <span class="form-checkbox-label">仅精确匹配会话名发送</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-send-fallback-current-chat">
+                                    <span class="form-checkbox-label">发送失败回退当前会话</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-card">
+                        <h2 class="settings-card-title">过滤规则</h2>
+                        <div class="settings-grid">
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-filter-mute">
+                                    <span class="form-checkbox-label">过滤免打扰/静音会话</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-ignore-official">
+                                    <span class="form-checkbox-label">忽略公众号</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-ignore-service">
+                                    <span class="form-checkbox-label">忽略服务号</span>
+                                </label>
+                            </div>
+                            <div class="form-group full-width">
+                                <label class="form-label">忽略会话名（每行一个）</label>
+                                <textarea id="setting-ignore-names" rows="3"></textarea>
+                            </div>
+                            <div class="form-group full-width">
+                                <label class="form-label">忽略关键词（每行一个）</label>
+                                <textarea id="setting-ignore-keywords" rows="3"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-card">
+                        <h2 class="settings-card-title">个性化</h2>
+                        <div class="settings-grid">
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-personalization-enabled">
+                                    <span class="form-checkbox-label">启用个性化功能</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">画像更新频率（每 N 条）</label>
+                                <input type="number" id="setting-profile-update-frequency" min="0" step="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-remember-facts-enabled">
+                                    <span class="form-checkbox-label">启用事实记忆</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">最大事实数量</label>
+                                <input type="number" id="setting-max-context-facts" min="0" step="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-profile-inject-in-prompt">
+                                    <span class="form-checkbox-label">在提示词注入画像</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-card">
+                        <h2 class="settings-card-title">控制命令</h2>
+                        <div class="settings-grid">
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-control-commands-enabled">
+                                    <span class="form-checkbox-label">启用控制命令</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">命令前缀</label>
+                                <input type="text" id="setting-control-command-prefix">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-control-reply-visible">
+                                    <span class="form-checkbox-label">控制命令回复可见</span>
+                                </label>
+                            </div>
+                            <div class="form-group full-width">
+                                <label class="form-label">允许命令的用户（每行一个）</label>
+                                <textarea id="setting-control-allowed-users" rows="3"></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-card">
+                        <h2 class="settings-card-title">定时静默</h2>
+                        <div class="settings-grid">
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-quiet-hours-enabled">
+                                    <span class="form-checkbox-label">启用静默时段</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">静默开始时间</label>
+                                <input type="text" id="setting-quiet-hours-start" placeholder="23:00">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">静默结束时间</label>
+                                <input type="text" id="setting-quiet-hours-end" placeholder="07:00">
+                            </div>
+                            <div class="form-group full-width">
+                                <label class="form-label">静默自动回复</label>
+                                <input type="text" id="setting-quiet-hours-reply">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-card">
+                        <h2 class="settings-card-title">用量监控</h2>
+                        <div class="settings-grid">
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-usage-tracking-enabled">
+                                    <span class="form-checkbox-label">启用用量追踪</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">每日 token 上限</label>
+                                <input type="number" id="setting-daily-token-limit" min="0" step="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">告警阈值（0-1）</label>
+                                <input type="number" id="setting-token-warning-threshold" min="0" max="1" step="0.01">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-card">
+                        <h2 class="settings-card-title">情感识别</h2>
+                        <div class="settings-grid">
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-emotion-detection-enabled">
+                                    <span class="form-checkbox-label">启用情感识别</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">检测模式</label>
+                                <select class="form-input" id="setting-emotion-detection-mode">
+                                    <option value="keywords">keywords</option>
+                                    <option value="ai">ai</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-emotion-inject-in-prompt">
+                                    <span class="form-checkbox-label">注入情绪引导</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-emotion-log-enabled">
+                                    <span class="form-checkbox-label">记录情绪日志</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-card">
+                        <h2 class="settings-card-title">日志设置</h2>
+                        <div class="settings-grid">
+                            <div class="form-group">
+                                <label class="form-label">日志级别</label>
+                                <select class="form-input" id="setting-log-level">
+                                    <option value="DEBUG">DEBUG</option>
+                                    <option value="INFO">INFO</option>
+                                    <option value="WARNING">WARNING</option>
+                                    <option value="ERROR">ERROR</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">日志格式</label>
+                                <select class="form-input" id="setting-log-format">
+                                    <option value="text">text</option>
+                                    <option value="json">json</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">日志文件路径</label>
+                                <input type="text" id="setting-log-file">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">单文件最大字节</label>
+                                <input type="number" id="setting-log-max-bytes" min="1024" step="1024">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">保留文件数</label>
+                                <input type="number" id="setting-log-backup-count" min="0" step="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-log-message-content">
+                                    <span class="form-checkbox-label">记录用户消息内容</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-log-reply-content">
+                                    <span class="form-checkbox-label">记录回复内容</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-card">
                         <h2 class="settings-card-title">关闭行为</h2>
                         <div class="form-group full-width">
                             <div style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;">如需重新选择关闭方式，可在此重置</div>

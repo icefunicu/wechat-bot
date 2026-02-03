@@ -37,6 +37,7 @@ CONFIG = {
         "base_url": 'https://api.openai.com/v1',      # 默认接口地址
         "api_key": "YOUR_API_KEY",                    # 默认 API 密钥
         "model": 'gpt-4o-mini',                       # 默认模型名称
+        "embedding_model": 'text-embedding-3-small',
         "alias": '小欧',                              # 模型别名（用于日志和回复后缀）
 
         # ┌─── 请求参数 ───────────────────────────────────────────────────────┐
@@ -69,6 +70,7 @@ CONFIG = {
                 "base_url": 'https://ark.cn-beijing.volces.com/api/v3',  # 接口地址
                 "api_key": "YOUR_DOUBAO_KEY",  # 接口密钥
                 "model": 'doubao-seed-1-8-251228',  # 模型名称
+                "embedding_model": "YOUR_DOUBAO_EMBEDDING_ENDPOINT",
                 "timeout_sec": 10,  # 超时时间（秒）
                 "max_retries": 2,  # 失败重试次数
                 "temperature": 0.6,  # 温度
@@ -191,6 +193,7 @@ CONFIG = {
                 "base_url": 'https://open.bigmodel.cn/api/paas/v4',  # 接口地址
                 "api_key": "YOUR_ZHIPU_KEY",  # 接口密钥
                 "model": 'glm-4.5-air',  # 模型名称
+                "embedding_model": "embedding-2",
                 "timeout_sec": 10,  # 超时时间（秒）
                 "max_retries": 2,  # 失败重试次数
                 "temperature": 0.6,  # 温度
@@ -259,7 +262,7 @@ CONFIG = {
         },
 
         # ┌─── 回复格式 ───────────────────────────────────────────────────────┐
-        "reply_suffix": "\n （🤖💬 AI代言中～）",     # 回复末尾追加，支持 {alias}/{model}
+        "reply_suffix": "\n （🤖💬 AI代言中～）",                          # 回复末尾追加，支持 {alias}/{model}
         "emoji_policy": 'mixed',                      # emoji 处理：wechat/strip/keep/mixed
         "emoji_replacements": {},                     # 自定义 emoji → 微信表情映射
 

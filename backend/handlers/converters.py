@@ -10,6 +10,7 @@ from ..utils.common import iter_items
 from ..utils.message import (
     is_text_message,
     is_voice_message,
+    is_image_message,
     split_group_message,
     is_at_me,
     strip_at_text,
@@ -82,6 +83,7 @@ def normalize_message_item(
     is_self = False
     chat_name = str(chat_name).strip()
 
+    timestamp = None
     if hasattr(item, "content") and hasattr(item, "type"):
         content = getattr(item, "content", "") or ""
         sender = (
@@ -91,12 +93,25 @@ def normalize_message_item(
         )
         msg_type = getattr(item, "type", None)
         attr = getattr(item, "attr", None)
+        timestamp = (
+            getattr(item, "timestamp", None)
+            or getattr(item, "time", None)
+            or getattr(item, "create_time", None)
+            or getattr(item, "createTime", None)
+        )
         if (not content) and hasattr(item, "info"):
             info = getattr(item, "info", None)
             if isinstance(info, dict):
                 content = info.get("content", content) or content
                 msg_type = info.get("type", msg_type)
                 attr = info.get("attr", attr)
+                if timestamp is None:
+                    timestamp = (
+                        info.get("timestamp")
+                        or info.get("time")
+                        or info.get("create_time")
+                        or info.get("createTime")
+                    )
         is_self = attr == "self"
         if attr in ("system", "time", "tickle"):
             return None
@@ -106,6 +121,13 @@ def normalize_message_item(
         msg_type = item.get("type") or item.get("msg_type") or "text"
         is_group = is_group or bool(item.get("is_group") or item.get("group"))
         is_self = bool(item.get("is_self"))
+        timestamp = (
+            item.get("timestamp")
+            or item.get("time")
+            or item.get("ts")
+            or item.get("create_time")
+            or item.get("createTime")
+        )
     elif isinstance(item, str):
         content = item
         sender = chat_name
@@ -118,6 +140,8 @@ def normalize_message_item(
     if is_voice_message(msg_type):
         if not content:
             content = VOICE_PLACEHOLDER
+    elif is_image_message(msg_type):
+        content = "[图片]"
     elif not is_text_message(msg_type, content):
         return None
 
@@ -126,6 +150,12 @@ def normalize_message_item(
         if sender_from_text:
             sender = sender_from_text
             content = clean
+
+    if timestamp is not None:
+        try:
+            timestamp = float(timestamp)
+        except Exception:
+            timestamp = None
 
     at_me = is_group and is_at_me(content, self_name)
     if is_group:
@@ -140,6 +170,7 @@ def normalize_message_item(
         msg_type=str(msg_type),
         is_self=is_self,
         chat_type=chat_type_norm,
+        timestamp=timestamp,
         raw_item=item,
     )
 

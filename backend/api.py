@@ -5,7 +5,7 @@
 使用 Quart（Flask 异步版本）实现统一的 asyncio 事件循环。
 """
 
-from quart import Quart, jsonify, request
+from quart import Quart, jsonify, request, make_response
 from quart_cors import cors
 import logging
 import os
@@ -38,6 +38,21 @@ manager = get_bot_manager()
 async def get_status():
     """获取机器人状态"""
     return jsonify(manager.get_status())
+
+
+@app.route('/api/events')
+async def sse_events():
+    """SSE 事件流"""
+    response = await make_response(
+        manager.event_generator(),
+        {
+            'Content-Type': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+        }
+    )
+    response.timeout = None
+    return response
 
 
 @app.route('/api/start', methods=['POST'])
@@ -79,14 +94,12 @@ async def restart_bot():
 async def get_messages():
     """获取消息历史"""
     try:
-        import asyncio
-        
         limit = request.args.get('limit', 50, type=int)
         
         # 使用共享的 MemoryManager 实例
         mem_mgr = manager.get_memory_manager()
         
-        messages = await asyncio.to_thread(mem_mgr.get_global_recent_messages, limit=limit)
+        messages = await mem_mgr.get_global_recent_messages(limit=limit)
             
         return jsonify({'success': True, 'messages': messages})
     except Exception as e:
@@ -177,78 +190,85 @@ async def save_config():
         # 确保目录存在
         os.makedirs(os.path.dirname(override_file), exist_ok=True)
         
-        # 读取现有覆写
-        existing = {}
-        if os.path.exists(override_file):
-            try:
-                with open(override_file, 'r', encoding='utf-8') as f:
-                    existing = json.load(f)
-            except Exception:
-                pass
-        
-        # 合并新配置
-        from backend.config import CONFIG
-        
-        for section, settings in data.items():
-            if section not in existing:
-                existing[section] = {}
+        def _sync_save_config(new_data):
+            # 读取现有覆写
+            existing = {}
+            if os.path.exists(override_file):
+                try:
+                    with open(override_file, 'r', encoding='utf-8') as f:
+                        existing = json.load(f)
+                except Exception:
+                    pass
             
-            # 特殊处理 api.presets 的 API Key 保护
-            if section == 'api' and 'presets' in settings:
-                current_presets = CONFIG.get('api', {}).get('presets', [])
-                new_presets = settings['presets']
+            # 合并新配置
+            # 注意：这里需要导入 CONFIG 来获取当前预设，但为了避免线程安全问题，
+            # 我们尽量只读取。CONFIG 是全局变量。
+            from backend.config import CONFIG
+            
+            for section, settings in new_data.items():
+                if section not in existing:
+                    existing[section] = {}
                 
-                # 获取 override 文件中的旧配置，用于辅助判断
-                existing_api = existing.get('api', {})
-                existing_presets = existing_api.get('presets', [])
+                # 特殊处理 api.presets 的 API Key 保护
+                if section == 'api' and 'presets' in settings:
+                    current_presets = CONFIG.get('api', {}).get('presets', [])
+                    new_presets = settings['presets']
+                    
+                    # 获取 override 文件中的旧配置，用于辅助判断
+                    existing_api = existing.get('api', {})
+                    existing_presets = existing_api.get('presets', [])
 
-                for new_p in new_presets:
-                    key = new_p.get('api_key')
-                    
-                    # 判断是否需要恢复 Key：
-                    # 1. 带有 _keep_key 标记 (前端明确表示没改)
-                    # 2. Key 为空 (前端没传)
-                    # 3. Key 是掩码 (前端传回了掩码)
-                    should_restore = new_p.get('_keep_key') or not key or '****' in key
-                    
-                    if should_restore:
-                        p_name = new_p.get('name')
-                        logger.info(f"尝试恢复预设 {p_name} 的 API Key")
-                        # 查找内存中的真实 Key
-                        mem_p = next((p for p in current_presets if p.get('name') == p_name), None)
+                    for new_p in new_presets:
+                        key = new_p.get('api_key')
                         
-                        if mem_p and mem_p.get('api_key') and not mem_p.get('api_key').startswith('****'):
-                            # 内存里有明文 Key，直接用
-                            new_p['api_key'] = mem_p['api_key']
-                            logger.info(f"从内存恢复了预设 {p_name} 的 Key")
-                        else:
-                            # 尝试从 existing file 里找
-                            file_p = next((p for p in existing_presets if p.get('name') == p_name), None)
-                            if file_p and file_p.get('api_key'):
-                                new_p['api_key'] = file_p['api_key']
-                                logger.info(f"从文件恢复了预设 {p_name} 的 Key")
+                        # 判断是否需要恢复 Key：
+                        # 1. 带有 _keep_key 标记 (前端明确表示没改)
+                        # 2. Key 为空 (前端没传)
+                        # 3. Key 是掩码 (前端传回了掩码)
+                        should_restore = new_p.get('_keep_key') or not key or '****' in key
+                        
+                        if should_restore:
+                            p_name = new_p.get('name')
+                            # logger.info(f"尝试恢复预设 {p_name} 的 API Key") 
+                            # 在线程中打日志可能没问题，但尽量少做
+                            
+                            # 查找内存中的真实 Key
+                            mem_p = next((p for p in current_presets if p.get('name') == p_name), None)
+                            
+                            if mem_p and mem_p.get('api_key') and not mem_p.get('api_key').startswith('****'):
+                                # 内存里有明文 Key，直接用
+                                new_p['api_key'] = mem_p['api_key']
                             else:
-                                # 实在找不到，就只能删掉 key 字段了
-                                logger.warning(f"未能恢复预设 {p_name} 的 Key")
-                                if 'api_key' in new_p:
-                                    del new_p['api_key']
+                                # 尝试从 existing file 里找
+                                file_p = next((p for p in existing_presets if p.get('name') == p_name), None)
+                                if file_p and file_p.get('api_key'):
+                                    new_p['api_key'] = file_p['api_key']
+                                else:
+                                    # 实在找不到，就只能删掉 key 字段了
+                                    if 'api_key' in new_p:
+                                        del new_p['api_key']
+                        
+                        # 清理临时字段
+                        for field in ['_keep_key', 'api_key_configured', 'api_key_masked']:
+                            if field in new_p:
+                                del new_p[field]
                     
-                    # 清理临时字段
-                    for field in ['_keep_key', 'api_key_configured', 'api_key_masked']:
-                        if field in new_p:
-                            del new_p[field]
-                
-            if isinstance(settings, dict):
-                existing[section].update(settings)
-            else:
-                existing[section] = settings
-        
-        # 保存
-        with open(override_file, 'w', encoding='utf-8') as f:
-            json.dump(existing, f, ensure_ascii=False, indent=2)
+                if isinstance(settings, dict):
+                    existing[section].update(settings)
+                else:
+                    existing[section] = settings
             
-        # 实时更新内存中的配置
-        from backend.config import _apply_config_overrides, _apply_api_keys, _apply_prompt_overrides
+            # 保存
+            with open(override_file, 'w', encoding='utf-8') as f:
+                json.dump(existing, f, ensure_ascii=False, indent=2)
+            
+            return existing
+
+        # 在线程池中执行文件 I/O
+        await asyncio.to_thread(_sync_save_config, data)
+            
+        # 实时更新内存中的配置 (回到主线程执行)
+        from backend.config import CONFIG, _apply_config_overrides, _apply_api_keys, _apply_prompt_overrides
         _apply_config_overrides(CONFIG)
         _apply_api_keys(CONFIG) # 重新应用 Key 可能有变
         _apply_prompt_overrides(CONFIG)
@@ -257,10 +277,6 @@ async def save_config():
         new_api_cfg = CONFIG.get('api', {})
         new_active = new_api_cfg.get('active_preset')
         
-        # 简单的变化检测（基于内存中最新的 CONFIG）
-        # 注意：这里无法直接对比旧值，除非我们之前存了。
-        # 但我们可以通过 manager 获取当前运行时的 bot 状态来对比？
-        # 或者简单地总是打印当前激活的模型，作为确认。
         if new_active:
              preset_info = next((p for p in new_api_cfg.get('presets', []) if p['name'] == new_active), {})
              model_name = preset_info.get('model', 'Unknown')
@@ -273,45 +289,11 @@ async def save_config():
 
         # 构造完整返回结构 (复用 get_config 的逻辑)
         # 必须返回完整配置，否则前端状态会丢失
-        response_data = await get_config() # 直接调用 get_config 获取处理好的安全配置
-        if isinstance(response_data, tuple):
-             # get_config 返回的是 (json, status) 或 Response 对象
-             # 但这里它是 async 函数且返回 jsonify 结果
-             # jsonify 返回的是 Response 对象
-             # 我们需要重新构造数据，或者提取数据
-             # 为避免复杂，直接复制 get_config 的逻辑更安全
-             pass
+        response_data = await get_config() 
+        # get_config 返回的是 Response 对象 (jsonify)
+        # 我们需要从 Response 对象中获取数据，或者直接返回它
+        return response_data
         
-        # 复用逻辑：构造安全的返回数据
-        api_cfg_safe = new_api_cfg.copy()
-        safe_presets = []
-        for preset in new_api_cfg.get('presets', []):
-            p = preset.copy()
-            key = p.get('api_key', '')
-            if key and not key.startswith('YOUR_'):
-                p['api_key_configured'] = True
-                p['api_key_masked'] = key[:8] + '****' + key[-4:] if len(key) > 12 else '****'
-            else:
-                p['api_key_configured'] = False
-                p['api_key_masked'] = ''
-            if 'api_key' in p: del p['api_key']
-            safe_presets.append(p)
-        api_cfg_safe['presets'] = safe_presets
-        
-        response = {
-            'success': True,
-            'message': '配置已保存',
-            'config': { # 前端期望的是 config 字段包裹 api/bot/logging，还是直接平铺？
-                        # 看前端：const { success, ...config } = result; 
-                        # 前端SettingsPage.js: this.currentConfig = result.config;
-                        # 所以这里应该返回一个 config 对象
-                'api': api_cfg_safe,
-                'bot': CONFIG.get('bot', {}),
-                'logging': CONFIG.get('logging', {})
-            }
-        }
-        
-        return jsonify(response)
     except Exception as e:
         logger.error(f"保存配置失败: {e}")
         return jsonify({'success': False, 'message': f'保存失败: {str(e)}'})

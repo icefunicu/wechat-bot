@@ -42,3 +42,5 @@ release/
 Thumbs.db
 
 .shared/
+
+.trae/

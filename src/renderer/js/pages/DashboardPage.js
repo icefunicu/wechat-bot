@@ -229,9 +229,10 @@ export class DashboardPage extends PageController {
             const sender = msg.sender || (msg.is_self ? 'AI助手' : '用户');
             const time = this._formatTime(msg.timestamp);
             const text = this._escapeHtml(msg.content || msg.text || '');
+            const roleClass = msg.is_self ? 'is-self' : 'is-user';
 
             return `
-                <div class="message-item" style="animation-delay: ${index * 0.05}s">
+                <div class="message-item ${roleClass}" style="animation-delay: ${index * 0.05}s">
                     <div class="message-avatar">${icon}</div>
                     <div class="message-body">
                         <div class="message-meta">

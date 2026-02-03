@@ -112,6 +112,7 @@ def build_api_candidates(api_cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
         "base_url": api_cfg.get("base_url"),
         "api_key": api_cfg.get("api_key"),
         "model": api_cfg.get("model"),
+        "embedding_model": api_cfg.get("embedding_model"),
         "timeout_sec": api_cfg.get("timeout_sec"),
         "max_retries": api_cfg.get("max_retries"),
         "temperature": api_cfg.get("temperature"),

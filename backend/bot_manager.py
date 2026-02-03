@@ -8,7 +8,7 @@
 import asyncio
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Set
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +41,9 @@ class BotManager:
         self.bot = None  # WeChatBot 实例
         self.task: Optional[asyncio.Task] = None  # 运行任务
         self.stop_event = asyncio.Event()  # 停止信号
+        
+        # 事件广播
+        self._event_queues: Set[asyncio.Queue] = set()
         
         # 状态
         self.is_running = False
@@ -322,7 +325,57 @@ class BotManager:
         self._stats_cache = None
         self._stats_cache_time = 0.0
 
+    async def broadcast_event(self, event_type: str, data: Any) -> None:
+        """
+        广播事件到所有监听者
+        
+        Args:
+            event_type: 事件类型 (e.g., 'message', 'status_change')
+            data: 事件数据
+        """
+        if not self._event_queues:
+            return
+            
+        payload = {
+            "type": event_type,
+            "data": data,
+            "timestamp": asyncio.get_event_loop().time()
+        }
+        
+        # 移除已关闭的队列
+        closed = []
+        for q in self._event_queues:
+            try:
+                q.put_nowait(payload)
+            except asyncio.QueueFull:
+                closed.append(q)
+            except Exception:
+                closed.append(q)
+        
+        for q in closed:
+            self._event_queues.discard(q)
 
+    async def event_generator(self):
+        """
+        SSE 事件生成器
+        """
+        queue = asyncio.Queue(maxsize=100)
+        self._event_queues.add(queue)
+        
+        try:
+            while True:
+                # 等待新事件
+                event = await queue.get()
+                
+                # SSE 格式: data: <json>\n\n
+                import json
+                yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        except asyncio.CancelledError:
+            pass
+        finally:
+            self._event_queues.discard(queue)
+            
+            
 # 便捷访问函数
 def get_bot_manager() -> BotManager:
     """获取 BotManager 实例"""
