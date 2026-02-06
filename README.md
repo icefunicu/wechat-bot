@@ -159,7 +159,7 @@ python run.py web
 ## 项目结构
 
 ```
-wechat-chat/
+wechat-bot/
 ├── run.py               # 🚀 统一入口 (start/web/check/setup)
 ├── requirements.txt     # Python 依赖清单
 ├── package.json         # Electron 依赖清单
