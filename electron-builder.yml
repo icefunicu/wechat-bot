@@ -2,11 +2,11 @@ appId: com.wechat.aibot
 productName: 微信AI助手
 
 directories:
-  output: dist
-  buildResources: electron/assets
+  output: release
 
 files:
-  - electron/**/*
+  - src/**/*
+  - package.json
   - "!**/node_modules/*/{CHANGELOG.md,README.md,readme.md}"
   - "!**/node_modules/*/{test,__tests__,tests,*.test.js}"
 
@@ -18,28 +18,39 @@ extraResources:
 
 win:
   target:
+    - target: portable
+      arch:
+        - x64
     - target: nsis
       arch:
         - x64
-  icon: electron/assets/icon.png
+    - target: msi
+      arch:
+        - x64
+  icon: src/assets/icon.ico
   publisherName: Dxj
 
+portable:
+  artifactName: "wechat-ai-assistant-portable-${version}-${arch}.${ext}"
+
 nsis:
-  oneClick: false
-  allowToChangeInstallationDirectory: true
+  artifactName: "wechat-ai-assistant-setup-${version}.${ext}"
+  oneClick: true
   perMachine: false
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: 微信AI助手
   installerLanguages:
     - zh_CN
-  language: 2052  # 简体中文
+  language: 2052
 
-# 压缩配置
+msi:
+  artifactName: "wechat-ai-assistant-installer-${version}-${arch}.${ext}"
+
 compression: maximum
 
-# 发布配置（可选）
-# publish:
-#   provider: github
-#   owner: your-github-username
-#   repo: wechat-ai-assistant
+publish:
+  provider: github
+  owner: byteD-x
+  repo: wechat-bot
+  releaseType: release

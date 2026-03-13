@@ -59,10 +59,10 @@ if errorlevel 1 (
 )
 echo     Python backend build complete.
 
-echo [5/5] Building portable Electron EXE...
-call npm run build:portable
+echo [5/5] Building Electron release packages (portable + setup + msi)...
+call npm run build:release
 if errorlevel 1 (
-    echo Electron portable build failed.
+    echo Electron release build failed.
     exit /b 1
 )
 

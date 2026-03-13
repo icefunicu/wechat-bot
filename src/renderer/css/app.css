@@ -378,6 +378,35 @@ a:hover {
     font-family: var(--font-mono);
 }
 
+.update-badge {
+    width: 100%;
+    margin-bottom: 10px;
+    padding: 10px 12px;
+    border: 1px solid rgba(249, 115, 22, 0.35);
+    border-radius: var(--radius-md);
+    background: linear-gradient(135deg, rgba(249, 115, 22, 0.16), rgba(59, 130, 246, 0.12));
+    color: #fdba74;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.update-badge:hover:not(:disabled) {
+    border-color: rgba(249, 115, 22, 0.55);
+    transform: translateY(-1px);
+}
+
+.update-badge:disabled {
+    cursor: default;
+    opacity: 0.8;
+}
+
+.update-badge[hidden] {
+    display: none;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════════
                                 主内容区
 ═══════════════════════════════════════════════════════════════════════════════ */
@@ -1602,6 +1631,37 @@ option {
 .settings-card:hover {
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
     border-color: rgba(255, 255, 255, 0.12);
+}
+
+.update-panel {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+}
+
+.update-panel-content {
+    min-width: 0;
+}
+
+.update-status-text {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.update-status-meta {
+    margin-top: 8px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.update-panel-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
 }
 
 .settings-card-title {

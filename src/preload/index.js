@@ -69,6 +69,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
      * 获取应用版本
      */
     getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+    getUpdateState: () => ipcRenderer.invoke('get-update-state'),
+    checkForUpdates: (options) => ipcRenderer.invoke('check-for-updates', options),
+    openUpdateDownload: () => ipcRenderer.invoke('open-update-download'),
 
     // ═══════════════════════════════════════════════════════════════════════
     //                           事件监听
@@ -108,7 +111,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
     /**
      * 标记首次运行完成
      */
-    setFirstRunComplete: () => ipcRenderer.invoke('set-first-run-complete')
+    setFirstRunComplete: () => ipcRenderer.invoke('set-first-run-complete'),
+    onUpdateStateChanged: (callback) => {
+        const handler = (_, state) => callback(state);
+        ipcRenderer.on('update-state-changed', handler);
+        return () => ipcRenderer.removeListener('update-state-changed', handler);
+    },
+    removeUpdateStateListener: () => {
+        ipcRenderer.removeAllListeners('update-state-changed');
+    }
 });
 
 console.log('[Preload] API 已暴露到 window.electronAPI');

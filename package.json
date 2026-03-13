@@ -1,16 +1,27 @@
 {
   "name": "wechat-ai-assistant",
   "version": "1.1.0",
-  "description": "微信AI助手 - 桌面客户端",
+  "description": "WeChat AI Assistant Desktop",
   "main": "src/main/index.js",
+  "homepage": "https://github.com/byteD-x/wechat-bot",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/byteD-x/wechat-bot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/byteD-x/wechat-bot/issues"
+  },
   "scripts": {
     "start": "electron .",
     "dev": "chcp 65001 && electron . --dev",
-    "build": "electron-builder",
-    "build:win": "electron-builder --win",
-    "build:portable": "electron-builder --win portable",
-    "build:installer": "electron-builder --win nsis",
-    "pack": "electron-builder --dir"
+    "build": "electron-builder --config electron-builder.yml",
+    "build:win": "electron-builder --config electron-builder.yml --win portable nsis msi --publish never",
+    "build:portable": "electron-builder --config electron-builder.yml --win portable --publish never",
+    "build:installer": "electron-builder --config electron-builder.yml --win nsis --publish never",
+    "build:msi": "electron-builder --config electron-builder.yml --win msi --publish never",
+    "build:release": "electron-builder --config electron-builder.yml --win portable nsis msi --publish never",
+    "publish:github": "electron-builder --config electron-builder.yml --win portable nsis msi --publish always",
+    "pack": "electron-builder --config electron-builder.yml --dir"
   },
   "author": "Dxj",
   "license": "MIT",
@@ -20,36 +31,7 @@
   },
   "dependencies": {
     "electron-store": "^8.1.0",
+    "electron-updater": "^6.8.3",
     "iconv-lite": "^0.7.2"
-  },
-  "build": {
-    "appId": "com.wechat.aibot",
-    "productName": "微信AI助手",
-    "directories": {
-      "output": "release"
-    },
-    "files": [
-      "src/**/*",
-      "!**/node_modules/*/{CHANGELOG.md,README.md,readme.md}"
-    ],
-    "extraResources": [
-      {
-        "from": "backend-dist/",
-        "to": "backend/"
-      }
-    ],
-    "win": {
-      "target": "nsis",
-      "icon": "src/assets/icon.ico"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "installerIcon": "src/assets/icon.ico",
-      "uninstallerIcon": "src/assets/icon.ico",
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "微信AI助手"
-    }
   }
 }

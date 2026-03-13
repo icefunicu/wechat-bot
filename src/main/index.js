@@ -8,12 +8,14 @@
  * 4. 增强的进程生命周期管理
  */
 
-const { app, BrowserWindow, Tray, Menu, ipcMain, shell, nativeImage } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, shell, nativeImage, Notification } = require('electron');
+const fs = require('fs');
 const path = require('path');
 const { spawn, exec } = require('child_process');
 const http = require('http');
 const Store = require('electron-store');
 const iconv = require('iconv-lite');
+const { UpdateManager } = require('./update-manager');
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //                               配置与全局状态
@@ -26,7 +28,13 @@ const store = new Store({
         autoStartBot: false,
         flaskPort: 5000,
         isFirstRun: true,
-        closeBehavior: 'ask'
+        closeBehavior: 'ask',
+        update: {
+            feedUrl: '',
+            autoCheckOnLaunch: true,
+            checkIntervalHours: 6,
+            notifyOnUpdate: true
+        }
     }
 });
 
@@ -35,6 +43,7 @@ const GLOBAL_STATE = {
     splashWindow: null,
     tray: null,
     pythonProcess: null,
+    updateManager: null,
     isQuitting: false,
     isDev: process.argv.includes('--dev'),
     flaskPort: store.get('flaskPort'),
@@ -58,7 +67,11 @@ const PathUtils = {
 
     get backendExecutable() {
         if (GLOBAL_STATE.isDev) return null;
-        return path.join(process.resourcesPath, 'backend', 'wechat-bot-backend.exe');
+        const candidates = [
+            path.join(process.resourcesPath, 'backend', 'wechat-bot-backend.exe'),
+            path.join(process.resourcesPath, 'backend', 'wechat-bot-backend', 'wechat-bot-backend.exe')
+        ];
+        return candidates.find(candidate => fs.existsSync(candidate)) || candidates[candidates.length - 1];
     }
 };
 
@@ -340,7 +353,6 @@ function setupIPC() {
                     'D:\\Program Files (x86)\\Tencent\\WeChat\\WeChat.exe',
                     'D:\\Program Files\\Tencent\\WeChat\\WeChat.exe'
                 ];
-                const fs = require('fs');
                 for (const p of commonPaths) {
                     if (fs.existsSync(p)) {
                         wechatPath = p;
@@ -402,6 +414,28 @@ function setupIPC() {
         return { success: true };
     });
 
+    ipcMain.handle('get-update-state', () => GLOBAL_STATE.updateManager?.getState() || {
+        enabled: false,
+        checking: false,
+        available: false,
+        currentVersion: app.getVersion(),
+        latestVersion: null,
+        lastCheckedAt: null,
+        releaseDate: null,
+        downloadUrl: '',
+        releasePageUrl: '',
+        notes: [],
+        error: ''
+    });
+
+    ipcMain.handle('check-for-updates', (_, options) => (
+        GLOBAL_STATE.updateManager?.checkForUpdates({ ...options, manual: true }) || { success: false, error: 'update manager unavailable' }
+    ));
+
+    ipcMain.handle('open-update-download', () => (
+        GLOBAL_STATE.updateManager?.openDownloadPage() || { success: false, error: 'download url unavailable' }
+    ));
+
     // 状态管理
     ipcMain.handle('is-first-run', () => store.get('isFirstRun'));
     ipcMain.handle('set-first-run-complete', () => {
@@ -439,10 +473,21 @@ if (!app.requestSingleInstanceLock()) {
         // 4. 创建主窗口 (后台加载，ready-to-show 时自动切换)
         WindowManager.createMain();
         WindowManager.createTray();
+
+        GLOBAL_STATE.updateManager = new UpdateManager({
+            app,
+            shell,
+            store,
+            Notification,
+            isDev: GLOBAL_STATE.isDev,
+            getMainWindow: () => GLOBAL_STATE.mainWindow
+        });
+        GLOBAL_STATE.updateManager.init();
     });
 
     app.on('before-quit', () => {
         GLOBAL_STATE.isQuitting = true;
+        GLOBAL_STATE.updateManager?.dispose();
         BackendManager.stop();
     });
 

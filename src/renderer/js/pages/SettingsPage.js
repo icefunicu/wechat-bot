@@ -11,16 +11,102 @@ export class SettingsPage extends PageController {
         super('SettingsPage', 'page-settings');
         this.currentConfig = null;
         this.modelCatalog = { providers: [] };
+        this._updateStateUnwatch = null;
     }
 
     async onInit() {
         await super.onInit();
         this._bindEvents();
+        this.watchState('updater.*', () => this._renderUpdateState());
     }
 
     async onEnter() {
         await super.onEnter();
         await this._loadConfig();
+        this._renderUpdateState();
+    }
+
+    _renderUpdateState() {
+        const statusText = this.$('#update-status-text');
+        const statusMeta = this.$('#update-status-meta');
+        const btnCheck = this.$('#btn-check-updates');
+        const btnDownload = this.$('#btn-open-update-download');
+        if (!statusText || !statusMeta || !btnCheck || !btnDownload) {
+            return;
+        }
+
+        const enabled = this.getState('updater.enabled');
+        const checking = this.getState('updater.checking');
+        const available = this.getState('updater.available');
+        const currentVersion = this.getState('updater.currentVersion') || '--';
+        const latestVersion = this.getState('updater.latestVersion') || '';
+        const lastCheckedAt = this.getState('updater.lastCheckedAt') || '';
+        const error = this.getState('updater.error') || '';
+
+        btnCheck.disabled = checking;
+        btnDownload.style.display = available ? 'inline-flex' : 'none';
+
+        if (!enabled) {
+            statusText.textContent = '当前环境未启用更新检查';
+            statusMeta.textContent = `当前版本：v${currentVersion}。开发模式下不会检查 GitHub Releases 更新。`;
+            return;
+        }
+
+        if (checking) {
+            statusText.textContent = '正在检查更新...';
+            statusMeta.textContent = `当前版本：v${currentVersion}`;
+            return;
+        }
+
+        if (available) {
+            statusText.textContent = `发现新版本 v${latestVersion}`;
+            statusMeta.textContent = lastCheckedAt
+                ? `当前版本：v${currentVersion} · 最近检查：${new Date(lastCheckedAt).toLocaleString('zh-CN')}`
+                : `当前版本：v${currentVersion}`;
+            return;
+        }
+
+        if (error) {
+            statusText.textContent = '检查更新失败';
+            statusMeta.textContent = error;
+            return;
+        }
+
+        statusText.textContent = '当前已是最新版本';
+        statusMeta.textContent = lastCheckedAt
+            ? `当前版本：v${currentVersion} · 最近检查：${new Date(lastCheckedAt).toLocaleString('zh-CN')}`
+            : `当前版本：v${currentVersion}`;
+    }
+
+    async _checkForUpdates() {
+        if (!window.electronAPI?.checkForUpdates) {
+            toast.error('当前环境不支持检查更新');
+            return;
+        }
+
+        const result = await window.electronAPI.checkForUpdates({ source: 'settings' });
+        if (!result?.success) {
+            toast.error(result?.error || '检查更新失败');
+            return;
+        }
+
+        if (result.updateAvailable) {
+            toast.success(`发现新版本 v${result.state?.latestVersion || ''}`);
+        } else {
+            toast.info('当前已是最新版本');
+        }
+    }
+
+    async _openUpdateDownload() {
+        if (!window.electronAPI?.openUpdateDownload) {
+            toast.error('当前环境不支持下载更新');
+            return;
+        }
+
+        const result = await window.electronAPI.openUpdateDownload();
+        if (!result?.success) {
+            toast.error(result?.error || '打开下载地址失败');
+        }
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -41,6 +127,8 @@ export class SettingsPage extends PageController {
         this.bindEvent('#btn-close-modal', 'click', () => this._closePresetModal());
         this.bindEvent('#btn-cancel-modal', 'click', () => this._closePresetModal());
         this.bindEvent('#btn-save-modal', 'click', () => this._savePreset());
+        this.bindEvent('#btn-check-updates', 'click', () => this._checkForUpdates());
+        this.bindEvent('#btn-open-update-download', 'click', () => this._openUpdateDownload());
 
         this.bindEvent('#btn-reset-close-behavior', 'click', async () => {
             if (!window.electronAPI?.resetCloseBehavior) {
