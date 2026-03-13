@@ -495,9 +495,9 @@ API 连接报错
 该脚本会自动：
 1. 安装/检查 Python 和 Node.js 依赖。
 2. 使用 `PyInstaller` 将 Python 后端打包为独立可执行文件。
-3. 使用 `electron-builder` 将前端和后端打包为最终的 Windows 安装包。
+3. 使用 `electron-builder` 将前端和后端打包为单文件的 Windows 便携版 EXE。
 
-构建完成后，安装包位于 `dist/` 目录下（如 `微信AI助手 Setup 1.0.0.exe`）。
+构建完成后，产物位于 `release/` 目录下，可直接双击运行（如 `微信AI助手 1.1.0.exe`）。
 
 ---
 

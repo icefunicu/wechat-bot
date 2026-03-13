@@ -1,6 +1,6 @@
 @echo off
+setlocal EnableExtensions EnableDelayedExpansion
 chcp 65001 >nul
-setlocal EnableDelayedExpansion
 
 echo.
 echo ==============================================================
@@ -8,100 +8,70 @@ echo            WeChat AI Assistant - Build Script
 echo ==============================================================
 echo.
 
-:: 获取项目根目录
 set "PROJECT_ROOT=%~dp0"
 cd /d "%PROJECT_ROOT%"
-
-:: 检查 Node.js
-echo [1/5] 检查 Node.js 环境...
-where node >nul 2>&1
-if %ERRORLEVEL% neq 0 (
-    echo ❌ 未找到 Node.js，请先安装 Node.js
-    echo    下载地址: https://nodejs.org/
-    pause
+if errorlevel 1 (
+    echo Failed to enter project root: %PROJECT_ROOT%
     exit /b 1
 )
-for /f "tokens=*" %%i in ('node -v') do set NODE_VERSION=%%i
-echo     ✓ Node.js %NODE_VERSION%
 
-:: 检查 Python
-echo [2/5] 检查 Python 环境...
+echo [1/5] Checking Node.js...
+where node >nul 2>&1
+if errorlevel 1 (
+    echo Node.js was not found. Install Node.js first.
+    echo https://nodejs.org/
+    exit /b 1
+)
+for /f "tokens=*" %%i in ('node -v') do set "NODE_VERSION=%%i"
+echo     Node.js !NODE_VERSION!
+
+echo [2/5] Checking Python...
 if exist ".venv\Scripts\python.exe" (
     set "PYTHON_EXE=.venv\Scripts\python.exe"
 ) else (
     where python >nul 2>&1
-    if %ERRORLEVEL% neq 0 (
-        echo ❌ 未找到 Python，请先安装 Python 3.8+
-        pause
+    if errorlevel 1 (
+        echo Python was not found. Install Python 3.8+ first.
         exit /b 1
     )
     set "PYTHON_EXE=python"
 )
-for /f "tokens=*" %%i in ('!PYTHON_EXE! --version') do set PY_VERSION=%%i
-echo     ✓ !PY_VERSION!
+for /f "tokens=*" %%i in ('"!PYTHON_EXE!" --version') do set "PY_VERSION=%%i"
+echo     !PY_VERSION!
 
-:: 安装 Node 依赖
-echo [3/5] 安装 Electron 依赖...
+echo [3/5] Checking Node dependencies...
 if not exist "node_modules" (
     call npm install
-    if %ERRORLEVEL% neq 0 (
-        echo ❌ npm install 失败
-        pause
+    if errorlevel 1 (
+        echo npm install failed.
         exit /b 1
     )
 )
-echo     ✓ 依赖已安装
+echo     Node dependencies are ready.
 
-:: 打包 Python 后端
-echo [4/5] 打包 Python 后端...
-if not exist "backend-dist" (
-    mkdir backend-dist
+echo [4/5] Building Python backend...
+if not exist "backend-dist" mkdir backend-dist
+
+"!PYTHON_EXE!" -m PyInstaller --name wechat-bot-backend --distpath "%PROJECT_ROOT%backend-dist" --workpath "%PROJECT_ROOT%build" --specpath "%PROJECT_ROOT%build" --noconfirm --clean --console --add-data "%PROJECT_ROOT%data;data" --hidden-import wxauto --hidden-import quart --hidden-import hypercorn --hidden-import openai --hidden-import httpx --collect-all wxauto "%PROJECT_ROOT%run.py"
+if errorlevel 1 (
+    echo PyInstaller build failed.
+    exit /b 1
 )
+echo     Python backend build complete.
 
-:: 检查是否已打包
-if not exist "backend-dist\wechat-bot-backend\wechat-bot-backend.exe" (
-    echo     正在使用 PyInstaller 打包后端...
-    !PYTHON_EXE! -m PyInstaller ^
-        --name wechat-bot-backend ^
-        --distpath backend-dist ^
-        --workpath build ^
-        --specpath build ^
-        --noconfirm ^
-        --console ^
-        --add-data "data;data" ^
-        --hidden-import wxauto ^
-        --hidden-import quart ^
-        --hidden-import hypercorn ^
-        --hidden-import openai ^
-        --hidden-import httpx ^
-        --collect-all wxauto ^
-        run.py
-    
-    if %ERRORLEVEL% neq 0 (
-        echo ❌ PyInstaller 打包失败
-        echo    请确保已安装 PyInstaller: pip install -r requirements.txt
-        exit /b 1
-    )
-)
-echo     ✓ 后端已打包
-
-:: 构建 Electron 应用
-echo [5/5] 构建 Electron 应用...
-call npm run build
-
-if %ERRORLEVEL% neq 0 (
-    echo ❌ Electron 构建失败
+echo [5/5] Building portable Electron EXE...
+call npm run build:portable
+if errorlevel 1 (
+    echo Electron portable build failed.
     exit /b 1
 )
 
 echo.
 echo ==============================================================
-echo                    Build Complete!
+echo                    Build Complete
 echo ==============================================================
 echo.
-echo 输出目录: %PROJECT_ROOT%dist\
+echo Output: %PROJECT_ROOT%release\
 echo.
 
-:: 打开输出目录
-if exist dist explorer dist
-
+if exist release explorer release
