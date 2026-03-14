@@ -4,6 +4,7 @@ import dis
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 
 
 def _collect_statement_lines(file_path: str) -> set:
@@ -181,6 +182,44 @@ class UtilsToolsTest(unittest.TestCase):
             self.assertEqual((text, err), ("你好", None))
 
         asyncio.run(_run_cases())
+
+
+class AIClientAndEmotionTest(unittest.TestCase):
+    def test_ai_client_precise_token_estimate_falls_back_cleanly(self):
+        from backend.core.ai_client import AIClient
+
+        class DummyEncoder:
+            def encode(self, text, disallowed_special=()):
+                return [1, 2, 3, 4]
+
+        AIClient._estimate_text_tokens_precise_cached.cache_clear()
+        with patch("backend.core.ai_client._get_tiktoken_encoder", return_value=DummyEncoder()):
+            client = AIClient(
+                base_url="https://example.com/v1",
+                api_key="",
+                model="test-model",
+            )
+            self.assertEqual(client._estimate_text_tokens("hello"), 4)
+
+        AIClient._estimate_text_tokens_precise_cached.cache_clear()
+        with patch("backend.core.ai_client._get_tiktoken_encoder", return_value=None):
+            client = AIClient(
+                base_url="https://example.com/v1",
+                api_key="",
+                model="test-model",
+            )
+            self.assertGreaterEqual(client._estimate_text_tokens("hello"), 1)
+
+    def test_detect_emotion_keywords_uses_cache(self):
+        from backend.core import emotion
+
+        emotion._detect_emotion_keywords_cached.cache_clear()
+        first = emotion.detect_emotion_keywords("今天太开心了")
+        second = emotion.detect_emotion_keywords("今天太开心了")
+
+        self.assertEqual(first.emotion, "happy")
+        self.assertEqual(second.emotion, "happy")
+        self.assertGreaterEqual(emotion._detect_emotion_keywords_cached.cache_info().hits, 1)
 
 
 class CoverageTest(unittest.TestCase):

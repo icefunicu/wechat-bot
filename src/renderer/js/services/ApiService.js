@@ -298,6 +298,18 @@ class ApiService {
         });
     }
 
+    /**
+     * 预览系统提示词
+     * @param {Object} payload - 预览参数
+     */
+    async previewPrompt(payload) {
+        return this.request('/api/preview_prompt', {
+            method: 'POST',
+            body: payload,
+            timeoutMs: 12000
+        });
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     //                           日志 API
     // ═══════════════════════════════════════════════════════════════════════

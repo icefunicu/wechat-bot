@@ -6,12 +6,43 @@
 """
 
 import asyncio
+import ctypes
 import logging
 import os
+import sys
 import time
 from typing import Any, Dict, Optional, Set
 
 logger = logging.getLogger(__name__)
+
+
+class _MemoryStatusEx(ctypes.Structure):
+    _fields_ = [
+        ("dwLength", ctypes.c_ulong),
+        ("dwMemoryLoad", ctypes.c_ulong),
+        ("ullTotalPhys", ctypes.c_ulonglong),
+        ("ullAvailPhys", ctypes.c_ulonglong),
+        ("ullTotalPageFile", ctypes.c_ulonglong),
+        ("ullAvailPageFile", ctypes.c_ulonglong),
+        ("ullTotalVirtual", ctypes.c_ulonglong),
+        ("ullAvailVirtual", ctypes.c_ulonglong),
+        ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+    ]
+
+
+class _ProcessMemoryCounters(ctypes.Structure):
+    _fields_ = [
+        ("cb", ctypes.c_ulong),
+        ("PageFaultCount", ctypes.c_ulong),
+        ("PeakWorkingSetSize", ctypes.c_size_t),
+        ("WorkingSetSize", ctypes.c_size_t),
+        ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+        ("QuotaPagedPoolUsage", ctypes.c_size_t),
+        ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+        ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+        ("PagefileUsage", ctypes.c_size_t),
+        ("PeakPagefileUsage", ctypes.c_size_t),
+    ]
 
 
 class BotManager:
@@ -71,6 +102,11 @@ class BotManager:
             active=False,
         )
         self._last_issue: Optional[Dict[str, Any]] = None
+        self._cpu_sample: Dict[str, float] = {
+            "cpu_time": time.process_time(),
+            "wall_time": time.perf_counter(),
+            "cpu_percent": 0.0,
+        }
         
         # 共享组件
         self.memory_manager = None
@@ -437,6 +473,13 @@ class BotManager:
                 status.update(self.bot.get_transport_status())
             except Exception:
                 pass
+        if self.bot and hasattr(self.bot, 'get_runtime_status'):
+            try:
+                status.update(self.bot.get_runtime_status())
+            except Exception:
+                pass
+        status['system_metrics'] = self._collect_system_metrics(status)
+        status['health_checks'] = self._build_health_checks(status)
         status['diagnostics'] = self._build_diagnostics(status)
         self._status_cache = status
         self._status_cache_time = now
@@ -572,6 +615,129 @@ class BotManager:
                 "action_label": "一键恢复",
             }
         return None
+
+    def _collect_system_metrics(self, status: Dict[str, Any]) -> Dict[str, Any]:
+        process_memory_mb = self._get_process_memory_mb()
+        memory = self._get_system_memory_snapshot()
+        cpu_percent = self._sample_process_cpu_percent()
+        queue_messages = int(status.get("merge_pending_messages", 0) or 0)
+        queue_chats = int(status.get("merge_pending_chats", 0) or 0)
+        pending_tasks = int(status.get("pending_tasks", 0) or 0)
+        runtime_timings = status.get("runtime_timings") or {}
+        ai_latency_sec = (
+            runtime_timings.get("stream_sec")
+            or runtime_timings.get("invoke_sec")
+            or runtime_timings.get("prepare_total_sec")
+            or 0.0
+        )
+        warning = ""
+        if cpu_percent >= 80:
+            warning = "CPU 占用偏高"
+        elif memory.get("percent", 0) >= 85:
+            warning = "内存占用偏高"
+        elif queue_messages >= 10 or pending_tasks >= 20:
+            warning = "消息队列积压"
+
+        return {
+            "cpu_percent": cpu_percent,
+            "process_memory_mb": process_memory_mb,
+            "system_memory_percent": memory.get("percent", 0.0),
+            "system_memory_used_mb": memory.get("used_mb", 0.0),
+            "system_memory_total_mb": memory.get("total_mb", 0.0),
+            "pending_tasks": pending_tasks,
+            "merge_pending_chats": queue_chats,
+            "merge_pending_messages": queue_messages,
+            "ai_latency_ms": round(float(ai_latency_sec or 0.0) * 1000, 1),
+            "warning": warning,
+        }
+
+    def _build_health_checks(self, status: Dict[str, Any]) -> Dict[str, Any]:
+        ai_status = "unknown"
+        ai_detail = "未检测到 AI 运行时"
+        ai_ready = bool(self.bot and getattr(self.bot, "ai_client", None))
+        if ai_ready:
+            ai_status = "healthy"
+            ai_detail = f"当前模型: {status.get('model') or 'unknown'}"
+        elif self.is_running:
+            ai_status = "degraded"
+            ai_detail = "机器人运行中，但 AI 客户端未就绪"
+
+        transport_connected = str(status.get("transport_status") or "").strip().lower() == "connected"
+        db_ok = False
+        db_detail = "数据库未初始化"
+        memory_manager = None
+        if self.bot and hasattr(self.bot, "memory"):
+            memory_manager = getattr(self.bot, "memory", None)
+        elif self.memory_manager is not None:
+            memory_manager = self.memory_manager
+        if memory_manager is not None:
+            db_path = str(getattr(memory_manager, "db_path", "") or "")
+            db_ok = bool(db_path)
+            db_detail = db_path or "内存中已创建数据库连接"
+
+        return {
+            "ai": {
+                "status": ai_status,
+                "detail": ai_detail,
+            },
+            "wechat": {
+                "status": "healthy" if transport_connected else "degraded",
+                "detail": status.get("transport_warning") or ("微信连接正常" if transport_connected else "当前微信未连接"),
+            },
+            "database": {
+                "status": "healthy" if db_ok else "degraded",
+                "detail": db_detail,
+            },
+        }
+
+    def _sample_process_cpu_percent(self) -> float:
+        now_cpu = time.process_time()
+        now_wall = time.perf_counter()
+        last_cpu = self._cpu_sample.get("cpu_time", now_cpu)
+        last_wall = self._cpu_sample.get("wall_time", now_wall)
+        delta_wall = max(now_wall - last_wall, 1e-6)
+        delta_cpu = max(now_cpu - last_cpu, 0.0)
+        cpu_percent = round(min(100.0, max(0.0, (delta_cpu / delta_wall) * 100.0)), 1)
+        self._cpu_sample = {
+            "cpu_time": now_cpu,
+            "wall_time": now_wall,
+            "cpu_percent": cpu_percent,
+        }
+        return cpu_percent
+
+    def _get_process_memory_mb(self) -> float:
+        if sys.platform.startswith("win"):
+            try:
+                counters = _ProcessMemoryCounters()
+                counters.cb = ctypes.sizeof(_ProcessMemoryCounters)
+                process = ctypes.windll.kernel32.GetCurrentProcess()
+                ok = ctypes.windll.psapi.GetProcessMemoryInfo(
+                    process,
+                    ctypes.byref(counters),
+                    counters.cb,
+                )
+                if ok:
+                    return round(counters.WorkingSetSize / (1024 * 1024), 1)
+            except Exception:
+                pass
+        return 0.0
+
+    def _get_system_memory_snapshot(self) -> Dict[str, float]:
+        if sys.platform.startswith("win"):
+            try:
+                status = _MemoryStatusEx()
+                status.dwLength = ctypes.sizeof(_MemoryStatusEx)
+                ok = ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status))
+                if ok:
+                    used = max(0, status.ullTotalPhys - status.ullAvailPhys)
+                    return {
+                        "percent": round(float(status.dwMemoryLoad), 1),
+                        "used_mb": round(used / (1024 * 1024), 1),
+                        "total_mb": round(status.ullTotalPhys / (1024 * 1024), 1),
+                    }
+            except Exception:
+                pass
+        return {"percent": 0.0, "used_mb": 0.0, "total_mb": 0.0}
 
     async def broadcast_event(self, event_type: str, data: Any) -> None:
         """

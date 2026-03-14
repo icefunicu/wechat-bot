@@ -852,6 +852,15 @@ input[type="checkbox"]:checked::after {
     padding: 6px;
 }
 
+.spinner-sm {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.18);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════════
                                 统计卡片
 ═══════════════════════════════════════════════════════════════════════════════ */
@@ -1175,6 +1184,106 @@ input[type="checkbox"]:checked::after {
 .bot-actions {
     display: flex;
     gap: 12px;
+}
+
+.health-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.health-metric {
+    padding: 14px 16px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.health-metric-label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.health-metric-value {
+    display: block;
+    margin-top: 8px;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+}
+
+.health-checks {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.health-check-item {
+    display: grid;
+    grid-template-columns: 10px 72px 1fr;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.health-check-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--color-warning);
+    box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.12);
+}
+
+.health-check-item[data-level="healthy"] .health-check-dot {
+    background: var(--color-success);
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.12);
+}
+
+.health-check-item[data-level="error"] .health-check-dot {
+    background: var(--color-error);
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
+}
+
+.health-check-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.health-check-text {
+    font-size: 12px;
+    color: var(--text-primary);
+    line-height: 1.5;
+}
+
+.health-feedback,
+.health-warning {
+    margin-top: 14px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.health-feedback {
+    background: rgba(59, 130, 246, 0.08);
+    border: 1px solid rgba(59, 130, 246, 0.16);
+    color: var(--text-secondary);
+}
+
+.health-feedback[data-active="true"] {
+    color: #93c5fd;
+}
+
+.health-warning {
+    background: rgba(245, 158, 11, 0.08);
+    border: 1px solid rgba(245, 158, 11, 0.16);
+    color: #fbbf24;
 }
 
 /* Quick Actions */
@@ -1817,6 +1926,57 @@ option {
 .settings-card:hover {
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
     border-color: rgba(255, 255, 255, 0.12);
+}
+
+.settings-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
+.prompt-preview-header {
+    align-items: flex-start;
+}
+
+.prompt-preview-summary {
+    margin-top: 4px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.prompt-preview-summary[data-state="success"] {
+    border-color: rgba(59, 130, 246, 0.16);
+    background: rgba(59, 130, 246, 0.08);
+    color: #bfdbfe;
+}
+
+.prompt-preview-summary[data-state="error"] {
+    border-color: rgba(239, 68, 68, 0.18);
+    background: rgba(239, 68, 68, 0.08);
+    color: #fca5a5;
+}
+
+.prompt-preview-output {
+    margin-top: 14px;
+    padding: 16px 18px;
+    min-height: 180px;
+    border-radius: 14px;
+    background: rgba(12, 12, 18, 0.88);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow: auto;
 }
 
 .update-panel {

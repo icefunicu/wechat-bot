@@ -327,6 +327,52 @@
                         </div>
                     </div>
 
+                    <!-- 健康监控 -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h2 class="card-title">健康监控</h2>
+                        </div>
+                        <div class="card-body">
+                            <div class="health-grid">
+                                <div class="health-metric">
+                                    <span class="health-metric-label">CPU 负载</span>
+                                    <strong class="health-metric-value" id="health-cpu">--</strong>
+                                </div>
+                                <div class="health-metric">
+                                    <span class="health-metric-label">内存占用</span>
+                                    <strong class="health-metric-value" id="health-memory">--</strong>
+                                </div>
+                                <div class="health-metric">
+                                    <span class="health-metric-label">队列积压</span>
+                                    <strong class="health-metric-value" id="health-queue">--</strong>
+                                </div>
+                                <div class="health-metric">
+                                    <span class="health-metric-label">AI 延迟</span>
+                                    <strong class="health-metric-value" id="health-latency">--</strong>
+                                </div>
+                            </div>
+                            <div class="health-checks">
+                                <div class="health-check-item" id="health-ai">
+                                    <span class="health-check-dot"></span>
+                                    <span class="health-check-label">AI 服务</span>
+                                    <span class="health-check-text">未检测</span>
+                                </div>
+                                <div class="health-check-item" id="health-wechat">
+                                    <span class="health-check-dot"></span>
+                                    <span class="health-check-label">微信连接</span>
+                                    <span class="health-check-text">未检测</span>
+                                </div>
+                                <div class="health-check-item" id="health-db">
+                                    <span class="health-check-dot"></span>
+                                    <span class="health-check-label">记忆库</span>
+                                    <span class="health-check-text">未检测</span>
+                                </div>
+                            </div>
+                            <div class="health-feedback" id="health-merge-feedback">消息合并状态：未激活</div>
+                            <div class="health-warning" id="health-warning" hidden></div>
+                        </div>
+                    </div>
+
                     <!-- 快捷操作 -->
                     <div class="card">
                         <div class="card-header">
@@ -546,6 +592,48 @@
                             <label class="form-label">会话提示覆盖（每行：会话名|提示词）</label>
                             <textarea id="setting-system-prompt-overrides" rows="4"></textarea>
                         </div>
+                    </div>
+
+                    <div class="settings-card">
+                        <div class="settings-card-header prompt-preview-header">
+                            <h2 class="settings-card-title" style="margin-bottom: 0;">提示词预览</h2>
+                            <button class="btn btn-secondary btn-sm" id="btn-preview-prompt">
+                                <svg class="icon icon-sm">
+                                    <use href="#icon-zap" />
+                                </svg>
+                                <span>生成预览</span>
+                            </button>
+                        </div>
+                        <div class="settings-grid">
+                            <div class="form-group">
+                                <label class="form-label">预览会话名</label>
+                                <input type="text" id="setting-preview-chat-name" placeholder="例如：张三">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">发送者昵称</label>
+                                <input type="text" id="setting-preview-sender" placeholder="例如：张三">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">关系标签</label>
+                                <input type="text" id="setting-preview-relationship" placeholder="例如：friend">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">情绪标签</label>
+                                <input type="text" id="setting-preview-emotion" placeholder="例如：happy">
+                            </div>
+                            <div class="form-group full-width">
+                                <label class="form-label">示例消息</label>
+                                <textarea id="setting-preview-message" rows="4" placeholder="输入一段示例对话，查看最终发送给模型的系统提示词"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-preview-is-group">
+                                    <span class="form-checkbox-label">按群聊场景预览</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="prompt-preview-summary" id="settings-preview-summary">尚未生成预览</div>
+                        <pre class="prompt-preview-output" id="settings-prompt-preview">点击“生成预览”后显示最终系统提示词。</pre>
                     </div>
 
                     <div class="settings-card">

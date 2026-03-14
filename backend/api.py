@@ -11,6 +11,7 @@ import logging
 import os
 import json
 import asyncio
+from types import SimpleNamespace
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
@@ -19,6 +20,7 @@ from .bot_manager import get_bot_manager
 from backend.config import CONFIG
 from backend.model_catalog import get_model_catalog, infer_provider_id, merge_provider_defaults
 from backend.utils.logging import setup_logging, get_logging_settings
+from backend.utils.config import resolve_system_prompt
 
 # 配置日志
 level, log_file, max_bytes, backup_count, format_type = get_logging_settings(CONFIG)
@@ -490,6 +492,54 @@ async def test_connection():
     except Exception as e:
         logger.error(f"连接测试异常: {e}")
         return jsonify({'success': False, 'message': f'测试异常: {str(e)}'})
+
+
+@app.route('/api/preview_prompt', methods=['POST'])
+async def preview_prompt():
+    """预览当前配置生成的系统提示词。"""
+    try:
+        data = await request.get_json(silent=True) or {}
+        bot_cfg = dict(CONFIG.get('bot', {}))
+        bot_overrides = data.get('bot')
+        if isinstance(bot_overrides, dict):
+            bot_cfg.update(bot_overrides)
+
+        sample = data.get('sample') if isinstance(data.get('sample'), dict) else {}
+        event = SimpleNamespace(
+            chat_name=str(sample.get('chat_name') or '预览联系人'),
+            sender=str(sample.get('sender') or '预览用户'),
+            content=str(sample.get('message') or ''),
+            is_group=bool(sample.get('is_group', False)),
+        )
+
+        user_profile = {
+            "nickname": str(sample.get('nickname') or event.sender),
+            "relationship": str(sample.get('relationship') or 'friend'),
+            "message_count": int(sample.get('message_count') or 12),
+        } if bot_cfg.get("profile_inject_in_prompt") else None
+
+        emotion = None
+        if bot_cfg.get("emotion_inject_in_prompt"):
+            emotion = SimpleNamespace(emotion=str(sample.get('emotion') or 'neutral'))
+
+        context = []
+        preview = resolve_system_prompt(event, bot_cfg, user_profile, emotion, context)
+        overrides = bot_cfg.get("system_prompt_overrides") or {}
+
+        return jsonify({
+            'success': True,
+            'prompt': preview,
+            'summary': {
+                'chars': len(preview),
+                'lines': len([line for line in preview.splitlines() if line.strip()]),
+                'override_applied': bool(getattr(event, "chat_name", "") in overrides),
+                'profile_injected': bool(user_profile),
+                'emotion_injected': emotion is not None,
+            }
+        })
+    except Exception as e:
+        logger.error(f"预览提示词失败: {e}")
+        return jsonify({'success': False, 'message': f'预览失败: {str(e)}'})
 
 
 @app.route('/api/logs', methods=['GET'])

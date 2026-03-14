@@ -325,6 +325,9 @@ export class DashboardPage extends PageController {
             transport_warning: stats.transport_warning || '',
             startup: stats.startup || null,
             diagnostics: stats.diagnostics || null,
+            system_metrics: stats.system_metrics || {},
+            health_checks: stats.health_checks || {},
+            merge_feedback: stats.merge_feedback || null,
         };
         const uptimeElem = this.$('#stat-uptime');
         const todayRepliesElem = this.$('#stat-today-replies');
@@ -364,6 +367,7 @@ export class DashboardPage extends PageController {
 
         this._renderStartupState(nextStats.startup);
         this._renderDiagnostics(nextStats.diagnostics);
+        this._renderHealthMetrics(nextStats.system_metrics, nextStats.health_checks, nextStats.merge_feedback);
 
         this._lastStats = nextStats;
     }
@@ -414,6 +418,78 @@ export class DashboardPage extends PageController {
             : '';
         action.hidden = !diagnostics.recoverable;
         action.textContent = diagnostics.action_label || '一键恢复';
+    }
+
+    _renderHealthMetrics(metrics = {}, checks = {}, mergeFeedback = null) {
+        const cpuElem = this.$('#health-cpu');
+        const memoryElem = this.$('#health-memory');
+        const queueElem = this.$('#health-queue');
+        const latencyElem = this.$('#health-latency');
+        const warningElem = this.$('#health-warning');
+        const mergeElem = this.$('#health-merge-feedback');
+        if (!cpuElem || !memoryElem || !queueElem || !latencyElem || !warningElem || !mergeElem) {
+            return;
+        }
+
+        cpuElem.textContent = this._formatPercent(metrics.cpu_percent);
+        memoryElem.textContent = this._formatMemory(metrics.process_memory_mb, metrics.system_memory_percent);
+        queueElem.textContent = this._formatQueue(metrics.pending_tasks, metrics.merge_pending_chats, metrics.merge_pending_messages);
+        latencyElem.textContent = this._formatLatency(metrics.ai_latency_ms);
+
+        warningElem.hidden = !metrics.warning;
+        warningElem.textContent = metrics.warning || '';
+
+        const mergeText = mergeFeedback?.status_text || '消息合并状态：未激活';
+        mergeElem.textContent = mergeText;
+        mergeElem.dataset.active = mergeFeedback?.active ? 'true' : 'false';
+
+        this._renderHealthCheckItem('health-ai', checks.ai);
+        this._renderHealthCheckItem('health-wechat', checks.wechat);
+        this._renderHealthCheckItem('health-db', checks.database);
+    }
+
+    _renderHealthCheckItem(elementId, check) {
+        const item = this.$(`#${elementId}`);
+        if (!item) {
+            return;
+        }
+        const text = item.querySelector('.health-check-text');
+        const level = ['healthy', 'warning', 'error'].includes(check?.level) ? check.level : 'warning';
+        item.dataset.level = level;
+        if (text) {
+            text.textContent = check?.message || '未检测';
+        }
+    }
+
+    _formatPercent(value) {
+        if (value === undefined || value === null || Number.isNaN(Number(value))) {
+            return '--';
+        }
+        return `${Number(value).toFixed(1)}%`;
+    }
+
+    _formatMemory(processMemory, systemPercent) {
+        const processText = processMemory === undefined || processMemory === null || Number.isNaN(Number(processMemory))
+            ? '--'
+            : `${Number(processMemory).toFixed(0)} MB`;
+        const systemText = systemPercent === undefined || systemPercent === null || Number.isNaN(Number(systemPercent))
+            ? '--'
+            : `${Number(systemPercent).toFixed(0)}%`;
+        return `${processText} / ${systemText}`;
+    }
+
+    _formatQueue(pendingTasks, pendingChats, pendingMessages) {
+        const tasks = Number.isFinite(Number(pendingTasks)) ? Number(pendingTasks) : 0;
+        const chats = Number.isFinite(Number(pendingChats)) ? Number(pendingChats) : 0;
+        const messages = Number.isFinite(Number(pendingMessages)) ? Number(pendingMessages) : 0;
+        return `${tasks} 任务 / ${chats} 会话 / ${messages} 条`;
+    }
+
+    _formatLatency(value) {
+        if (value === undefined || value === null || Number.isNaN(Number(value)) || Number(value) <= 0) {
+            return '--';
+        }
+        return `${Math.round(Number(value))} ms`;
     }
 
     _formatNumber(value) {

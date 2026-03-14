@@ -35,6 +35,11 @@ from typing import AsyncIterator, Deque, Dict, Iterable, List, Optional, Tuple
 import httpx
 from tenacity import AsyncRetrying, stop_after_attempt, wait_exponential, retry_if_exception_type, RetryError
 
+try:
+    import tiktoken
+except Exception:  # pragma: no cover - 可选依赖
+    tiktoken = None
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #                               常量定义
@@ -45,6 +50,8 @@ MAX_RETRIES = 2             # 最大重试次数
 
 # 共享的 HTTP 客户端实例（连接池复用）
 _shared_client: Optional[httpx.AsyncClient] = None
+_tiktoken_encoder = None
+_tiktoken_probe_done = False
 
 
 def _is_cjk_char(code: int) -> bool:
@@ -106,6 +113,23 @@ def _coerce_retries(value: int) -> int:
     if val < 0:
         val = 0
     return min(val, MAX_RETRIES)
+
+
+def _get_tiktoken_encoder():
+    """获取可复用的 tiktoken 编码器。"""
+    global _tiktoken_encoder, _tiktoken_probe_done
+    if _tiktoken_probe_done:
+        return _tiktoken_encoder
+
+    _tiktoken_probe_done = True
+    if tiktoken is None:
+        return None
+
+    try:
+        _tiktoken_encoder = tiktoken.get_encoding("cl100k_base")
+    except Exception:
+        _tiktoken_encoder = None
+    return _tiktoken_encoder
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -657,14 +681,35 @@ class AIClient:
         ascii_tokens = max(1, ascii_count // 4) if ascii_count > 0 else 0
         return cjk + ascii_tokens
 
+    @staticmethod
+    @lru_cache(maxsize=1024)
+    def _estimate_text_tokens_precise_cached(text: str) -> Optional[int]:
+        """
+        使用 tiktoken 进行更精确的 token 估算。
+
+        返回 None 表示当前环境不可用，调用方应回退到启发式算法。
+        """
+        if not text:
+            return 0
+        encoder = _get_tiktoken_encoder()
+        if encoder is None:
+            return None
+        try:
+            return len(encoder.encode(text, disallowed_special=()))
+        except Exception:
+            return None
+
     def _estimate_text_tokens(self, text: str) -> int:
         """估算文本的 token 数量。"""
+        precise = self._estimate_text_tokens_precise_cached(text)
+        if precise is not None:
+            return precise
         return self._estimate_text_tokens_cached(text)
 
     def _estimate_message_tokens(self, message: dict) -> int:
         """估算单条消息的 token 数量（内容 + 元数据开销）。"""
         content = str(message.get("content", "") or "")
-        return self._estimate_text_tokens_cached(content) + 4
+        return self._estimate_text_tokens(content) + 4
 
     def _estimate_messages_tokens(self, messages: List[dict]) -> int:
         return sum(self._estimate_message_tokens(msg) for msg in messages)

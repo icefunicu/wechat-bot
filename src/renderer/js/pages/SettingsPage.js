@@ -120,6 +120,7 @@ export class SettingsPage extends PageController {
 
         // 保存配置
         this.bindEvent('#btn-save-settings', 'click', () => this._saveConfig());
+        this.bindEvent('#btn-preview-prompt', 'click', () => this._previewPrompt());
 
         // 新增预设
         this.bindEvent('#btn-add-preset', 'click', () => this._openPresetModal());
@@ -1066,8 +1067,134 @@ export class SettingsPage extends PageController {
             quoteFallback.checked = bot.reply_quote_fallback_to_text !== false;
         }
 
+        this._fillPromptPreviewDefaults(bot);
+        void this._previewPrompt({ showToast: false });
+
         // 渲染预设列表
         this._renderPresetList(api.presets || {});
+    }
+
+    _parsePromptOverridesInput(value) {
+        const raw = String(value || '');
+        const lines = raw.split('\n').map(item => item.trim()).filter(Boolean);
+        const overrides = {};
+        lines.forEach((line) => {
+            const idx = line.indexOf('|');
+            if (idx <= 0) return;
+            const key = line.slice(0, idx).trim();
+            const content = line.slice(idx + 1).trim().replace(/\\n/g, '\n');
+            if (key) {
+                overrides[key] = content;
+            }
+        });
+        return overrides;
+    }
+
+    _fillPromptPreviewDefaults(bot = {}) {
+        const chatName = this.$('#setting-preview-chat-name');
+        const sender = this.$('#setting-preview-sender');
+        const relationship = this.$('#setting-preview-relationship');
+        const emotion = this.$('#setting-preview-emotion');
+        const message = this.$('#setting-preview-message');
+        const isGroup = this.$('#setting-preview-is-group');
+
+        if (chatName && !chatName.value.trim()) {
+            chatName.value = '预览联系人';
+        }
+        if (sender && !sender.value.trim()) {
+            sender.value = '对方';
+        }
+        if (relationship && !relationship.value.trim()) {
+            relationship.value = 'friend';
+        }
+        if (emotion && !emotion.value.trim()) {
+            emotion.value = 'neutral';
+        }
+        if (message && !message.value.trim()) {
+            const fallbackName = bot.self_name ? `我是${bot.self_name}，` : '';
+            message.value = `${fallbackName}你今天有空吗？`;
+        }
+        if (isGroup && isGroup.indeterminate) {
+            isGroup.checked = false;
+        }
+    }
+
+    _collectPromptPreviewPayload() {
+        return {
+            bot: {
+                system_prompt: this.$('#setting-system-prompt')?.value ?? '',
+                system_prompt_overrides: this._parsePromptOverridesInput(this.$('#setting-system-prompt-overrides')?.value || ''),
+                profile_inject_in_prompt: !!this.$('#setting-profile-inject-in-prompt')?.checked,
+                emotion_inject_in_prompt: !!this.$('#setting-emotion-inject-in-prompt')?.checked,
+            },
+            sample: {
+                chat_name: this.$('#setting-preview-chat-name')?.value?.trim() || '预览联系人',
+                sender: this.$('#setting-preview-sender')?.value?.trim() || '对方',
+                relationship: this.$('#setting-preview-relationship')?.value?.trim() || 'friend',
+                emotion: this.$('#setting-preview-emotion')?.value?.trim() || 'neutral',
+                message: this.$('#setting-preview-message')?.value ?? '',
+                is_group: !!this.$('#setting-preview-is-group')?.checked,
+            }
+        };
+    }
+
+    _renderPromptPreview(result) {
+        const summary = this.$('#settings-preview-summary');
+        const output = this.$('#settings-prompt-preview');
+        if (!summary || !output) {
+            return;
+        }
+
+        if (!result?.success) {
+            summary.textContent = result?.message || '预览失败';
+            summary.dataset.state = 'error';
+            output.textContent = result?.message || '预览失败';
+            return;
+        }
+
+        const meta = result.summary || {};
+        const flags = [];
+        if (meta.override_applied) flags.push('已命中会话覆盖');
+        if (meta.profile_injected) flags.push('已注入用户画像');
+        if (meta.emotion_injected) flags.push('已注入情绪');
+        if (flags.length === 0) flags.push('仅基础提示词');
+
+        summary.textContent = `字符 ${meta.chars ?? 0} · 行数 ${meta.lines ?? 0} · ${flags.join(' · ')}`;
+        summary.dataset.state = 'success';
+        output.textContent = result.prompt || '';
+    }
+
+    async _previewPrompt({ showToast = true } = {}) {
+        const previewButton = this.$('#btn-preview-prompt');
+        if (!previewButton) {
+            return;
+        }
+
+        this._setButtonLoading(
+            previewButton,
+            true,
+            '<span class="spinner-sm" style="width:14px;height:14px;border-width:2px;"></span><span> 生成中...</span>'
+        );
+
+        try {
+            const result = await apiService.previewPrompt(this._collectPromptPreviewPayload());
+            this._renderPromptPreview(result);
+            if (!result?.success) {
+                throw new Error(result?.message || '预览失败');
+            }
+            if (showToast) {
+                toast.success('提示词预览已更新');
+            }
+        } catch (error) {
+            console.error('预览提示词异常:', error);
+            const message = toast.getErrorMessage(error, '预览提示词失败');
+            this._renderPromptPreview({ success: false, message });
+            if (showToast) {
+                toast.error(message);
+            }
+        } finally {
+            this._setButtonLoading(previewButton, false);
+        }
     }
 
     async _saveConfig() {
@@ -1111,16 +1238,7 @@ export class SettingsPage extends PageController {
             const quoteMaxChars = quoteMaxCharsRaw === '' || quoteMaxCharsRaw == null ? undefined : Number(quoteMaxCharsRaw);
             const quoteTimeoutSec = quoteTimeoutRaw === '' || quoteTimeoutRaw == null ? undefined : Number(quoteTimeoutRaw);
 
-            const overridesInput = this.$('#setting-system-prompt-overrides')?.value || '';
-            const overridesLines = parseLines(overridesInput);
-            const overrides = {};
-            overridesLines.forEach(line => {
-                const idx = line.indexOf('|');
-                if (idx <= 0) return;
-                const key = line.slice(0, idx).trim();
-                const value = line.slice(idx + 1).trim().replace(/\\n/g, '\n');
-                if (key) overrides[key] = value;
-            });
+            const overrides = this._parsePromptOverridesInput(this.$('#setting-system-prompt-overrides')?.value || '');
 
             const emojiReplacementInput = this.$('#setting-emoji-replacements')?.value || '';
             const emojiReplacementLines = parseLines(emojiReplacementInput);

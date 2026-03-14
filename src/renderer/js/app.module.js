@@ -43,6 +43,7 @@ class App {
         await this._setupUpdater();
 
         this._bindGlobalEvents();
+        this._bindKeyboardShortcuts();
         this._setupCloseChoiceModal();
 
         for (const page of Object.values(this.pages)) {
@@ -270,6 +271,81 @@ class App {
                 this._scheduleNextStatusRefresh(0);
             }
         });
+    }
+
+    _bindKeyboardShortcuts() {
+        window.addEventListener('keydown', (event) => {
+            if (event.defaultPrevented || event.isComposing) {
+                return;
+            }
+
+            const key = String(event.key || '').toLowerCase();
+            const ctrlOrMeta = event.ctrlKey || event.metaKey;
+
+            if (key === 'f5') {
+                event.preventDefault();
+                notificationService.info('正在刷新状态...');
+                this._refreshStatus();
+                return;
+            }
+
+            if (!ctrlOrMeta || this._isEditableTarget(event.target)) {
+                return;
+            }
+
+            if (key === '1') {
+                event.preventDefault();
+                this._switchPage('dashboard');
+                return;
+            }
+            if (key === '2') {
+                event.preventDefault();
+                this._switchPage('messages');
+                return;
+            }
+            if (key === '3') {
+                event.preventDefault();
+                this._switchPage('settings');
+                return;
+            }
+            if (key === '4') {
+                event.preventDefault();
+                this._switchPage('logs');
+                return;
+            }
+            if (key === 'r') {
+                event.preventDefault();
+                void this._restartBotFromShortcut();
+                return;
+            }
+            if (key === 'q') {
+                event.preventDefault();
+                window.electronAPI?.closeWindow();
+            }
+        });
+    }
+
+    _isEditableTarget(target) {
+        if (!(target instanceof HTMLElement)) {
+            return false;
+        }
+        if (target.isContentEditable) {
+            return true;
+        }
+        const tagName = target.tagName;
+        return tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT';
+    }
+
+    async _restartBotFromShortcut() {
+        try {
+            notificationService.info('正在重启机器人...');
+            const result = await apiService.restartBot();
+            notificationService.show(result.message, result.success ? 'success' : 'error');
+            await this._refreshStatus();
+        } catch (error) {
+            console.error('[App] 快捷键重启失败:', error);
+            notificationService.error('快捷键重启失败');
+        }
     }
 
     _setupCloseChoiceModal() {

@@ -256,6 +256,44 @@ async def test_api_ollama_models(client):
 
 
 @pytest.mark.asyncio
+async def test_api_preview_prompt_applies_overrides_and_injections(client):
+    preview_config = {
+        "bot": {
+            "system_prompt": "基础提示",
+            "system_prompt_overrides": {
+                "项目群": "群聊专用提示"
+            },
+            "profile_inject_in_prompt": True,
+            "emotion_inject_in_prompt": True,
+        }
+    }
+
+    with patch.object(api_module, "CONFIG", preview_config):
+        response = await client.post('/api/preview_prompt', json={
+            "sample": {
+                "chat_name": "项目群",
+                "sender": "小李",
+                "relationship": "teammate",
+                "emotion": "excited",
+                "message": "今晚发版吗？",
+                "is_group": True,
+            }
+        })
+
+    assert response.status_code == 200
+    data = await response.get_json()
+    assert data["success"] is True
+    assert "群聊专用提示" in data["prompt"]
+    assert "[User Profile]" in data["prompt"]
+    assert "relationship: teammate" in data["prompt"]
+    assert "[Current Emotion]" in data["prompt"]
+    assert "excited" in data["prompt"]
+    assert data["summary"]["override_applied"] is True
+    assert data["summary"]["profile_injected"] is True
+    assert data["summary"]["emotion_injected"] is True
+
+
+@pytest.mark.asyncio
 async def test_api_save_config_triggers_runtime_reload(client, mock_manager):
     test_config = {
         "api": {

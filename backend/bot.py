@@ -638,11 +638,13 @@ class WeChatBot:
             self.pending_merge_tasks[chat_id] = task
             self._track_pending_task(task)
             task.add_done_callback(self.pending_tasks.discard)
+            self._notify_runtime_status_changed()
 
     async def wait_and_reply(self, wx: "WeChat", chat_id: str, delay: float) -> None:
         try:
             await asyncio.sleep(delay)
         except asyncio.CancelledError:
+            self._notify_runtime_status_changed()
             return
 
         async with self.pending_merge_lock:
@@ -651,6 +653,7 @@ class WeChatBot:
             first_event = self.pending_merge_first_event.pop(chat_id, None)
             self.pending_merge_tasks.pop(chat_id, None)
             self.pending_merge_first_ts.pop(chat_id, None)
+        self._notify_runtime_status_changed()
         
         combined_text = "\n".join(messages).strip()
         if not event or not combined_text:
@@ -1107,8 +1110,10 @@ class WeChatBot:
         if len(self.pending_tasks) >= self.max_pending_tasks:
             logging.warning("待处理任务已达到上限 (%s)，跳过新增任务。", self.max_pending_tasks)
             task.cancel()
+            self._notify_runtime_status_changed()
             return
         self.pending_tasks.add(task)
+        self._notify_runtime_status_changed()
 
     def _build_reply_metadata(
         self,
@@ -1157,6 +1162,28 @@ class WeChatBot:
             "context_summary": dict(getattr(prepared, "trace", {}).get("context_summary") or {}),
             "profile": dict(getattr(prepared, "trace", {}).get("profile") or {}) or None,
         }
+
+    def get_runtime_status(self) -> Dict[str, Any]:
+        pending_merge_chats = len(self.pending_merge_tasks)
+        pending_merge_messages = sum(len(items) for items in self.pending_merge_messages.values())
+        return {
+            "pending_tasks": len(self.pending_tasks),
+            "merge_pending_chats": pending_merge_chats,
+            "merge_pending_messages": pending_merge_messages,
+            "merge_feedback": {
+                "enabled": as_float(self.bot_cfg.get("merge_user_messages_sec", 0.0), 0.0) > 0,
+                "active": pending_merge_chats > 0,
+                "status_text": (
+                    f"正在合并 {pending_merge_chats} 个会话的 {pending_merge_messages} 条消息"
+                    if pending_merge_chats > 0
+                    else "当前没有待合并消息"
+                ),
+            },
+        }
+
+    def _notify_runtime_status_changed(self) -> None:
+        self.bot_manager._invalidate_status_cache()
+        asyncio.create_task(self.bot_manager.notify_status_change())
 
     async def _execute_ipc_command(self, wx: "WeChat", cmd: Dict) -> None:
         """执行来自 Web 的 IPC 命令"""

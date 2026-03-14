@@ -112,8 +112,15 @@ def detect_emotion_keywords(text: str) -> EmotionResult:
     if not text:
         return _NEUTRAL_RESULT
 
-    text_lower = text.lower()
-    
+    return _detect_emotion_keywords_cached(text.lower())
+
+
+@lru_cache(maxsize=2048)
+def _detect_emotion_keywords_cached(text_lower: str) -> EmotionResult:
+    """带缓存的关键词情感识别。"""
+    if not text_lower:
+        return _NEUTRAL_RESULT
+
     # 使用列表推导式替代循环，更高效
     emotion_scores: Dict[str, Tuple[int, List[str]]] = {}
     
