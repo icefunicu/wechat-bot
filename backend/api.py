@@ -46,8 +46,8 @@ def _mask_preset(preset: dict) -> dict:
     key = masked.get("api_key", "")
     allow_empty = bool(masked.get("allow_empty_key", False))
     if allow_empty:
-        # 不需要 Key 的服务（如 Ollama），直接视为已就绪
-        masked["api_key_configured"] = True
+        # 不需要 Key 的服务（如 Ollama）无需额外配置，但也不标记为“已配 Key”
+        masked["api_key_configured"] = False
         masked["api_key_masked"] = ""
     elif key and not key.startswith("YOUR_"):
         masked["api_key_configured"] = True
@@ -185,6 +185,13 @@ async def resume_bot():
 async def restart_bot():
     """重启机器人"""
     result = await manager.restart()
+    return jsonify(result)
+
+
+@app.route('/api/recover', methods=['POST'])
+async def recover_bot():
+    """一键恢复机器人"""
+    result = await manager.recover()
     return jsonify(result)
 
 

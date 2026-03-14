@@ -42,6 +42,7 @@ export class DashboardPage extends PageController {
 
         // 重启按钮
         this.bindEvent('#btn-restart', 'click', () => this._restartBot());
+        this.bindEvent('#btn-recover-bot', 'click', () => this._recoverBot());
 
         // 快捷操作
         this.bindEvent('#btn-open-wechat', 'click', async () => {
@@ -145,6 +146,17 @@ export class DashboardPage extends PageController {
         }
     }
 
+    async _recoverBot() {
+        try {
+            toast.info('正在尝试恢复机器人...');
+            const result = await apiService.recoverBot();
+            toast.show(result.message, result.success ? 'success' : 'error');
+            setTimeout(() => this.emit(Events.BOT_STATUS_CHANGE, {}), 1500);
+        } catch (error) {
+            toast.error(toast.getErrorMessage(error, '恢复失败'));
+        }
+    }
+
     // ═══════════════════════════════════════════════════════════════════════
     //                           UI 更新
     // ═══════════════════════════════════════════════════════════════════════
@@ -152,6 +164,7 @@ export class DashboardPage extends PageController {
     _updateBotUI() {
         const isRunning = this.getState('bot.running');
         const isPaused = this.getState('bot.paused');
+        const status = this.getState('bot.status') || {};
 
         // 更新机器人状态显示
         const stateElem = this.$('#bot-state');
@@ -198,6 +211,9 @@ export class DashboardPage extends PageController {
                 toggleBtn.classList.add('btn-primary');
             }
         }
+
+        this._renderStartupState(status.startup);
+        this._renderDiagnostics(status.diagnostics);
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -306,7 +322,9 @@ export class DashboardPage extends PageController {
             transport_backend: stats.transport_backend || 'compat_ui',
             wechat_version: stats.wechat_version || '--',
             compat_mode: !!stats.compat_mode,
-            transport_warning: stats.transport_warning || ''
+            transport_warning: stats.transport_warning || '',
+            startup: stats.startup || null,
+            diagnostics: stats.diagnostics || null,
         };
         const uptimeElem = this.$('#stat-uptime');
         const todayRepliesElem = this.$('#stat-today-replies');
@@ -344,7 +362,58 @@ export class DashboardPage extends PageController {
             }
         }
 
+        this._renderStartupState(nextStats.startup);
+        this._renderDiagnostics(nextStats.diagnostics);
+
         this._lastStats = nextStats;
+    }
+
+    _renderStartupState(startup) {
+        const panel = this.$('#bot-startup-panel');
+        const label = this.$('#bot-startup-label');
+        const progress = this.$('#bot-startup-progress');
+        const meta = this.$('#bot-startup-meta');
+        if (!panel || !label || !progress || !meta) {
+            return;
+        }
+
+        const active = !!startup?.active;
+        panel.hidden = !active;
+        if (!active) {
+            return;
+        }
+
+        const progressValue = Number(startup?.progress || 0);
+        label.textContent = startup?.message || '正在启动机器人...';
+        progress.style.width = `${Math.max(0, Math.min(progressValue, 100))}%`;
+        meta.textContent = `${progressValue}% · 阶段: ${startup?.stage || 'starting'}`;
+    }
+
+    _renderDiagnostics(diagnostics) {
+        const panel = this.$('#bot-diagnostics');
+        const title = this.$('#bot-diagnostics-title');
+        const detail = this.$('#bot-diagnostics-detail');
+        const list = this.$('#bot-diagnostics-list');
+        const action = this.$('#btn-recover-bot');
+        if (!panel || !title || !detail || !list || !action) {
+            return;
+        }
+
+        if (!diagnostics) {
+            panel.hidden = true;
+            list.innerHTML = '';
+            return;
+        }
+
+        panel.hidden = false;
+        panel.dataset.level = diagnostics.level || 'warning';
+        title.textContent = diagnostics.title || '运行诊断';
+        detail.textContent = diagnostics.detail || '检测到需要关注的运行状态。';
+        list.innerHTML = Array.isArray(diagnostics.suggestions)
+            ? diagnostics.suggestions.map(item => `<li>${this._escapeHtml(item)}</li>`).join('')
+            : '';
+        action.hidden = !diagnostics.recoverable;
+        action.textContent = diagnostics.action_label || '一键恢复';
     }
 
     _formatNumber(value) {

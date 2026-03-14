@@ -50,6 +50,18 @@ const GLOBAL_STATE = {
     get flaskUrl() { return `http://localhost:${this.flaskPort}`; }
 };
 
+function updateSplashStatus(message, progress = 0) {
+    const splash = GLOBAL_STATE.splashWindow;
+    if (!splash || splash.isDestroyed()) {
+        return;
+    }
+    const safeMessage = JSON.stringify(String(message || '正在初始化...'));
+    const safeProgress = Number.isFinite(progress) ? Math.max(0, Math.min(progress, 100)) : 0;
+    splash.webContents.executeJavaScript(
+        `window.updateSplashStatus && window.updateSplashStatus(${safeMessage}, ${safeProgress});`
+    ).catch(() => {});
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 //                               工具函数
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -96,6 +108,7 @@ const BackendManager = {
     async start() {
         if (await this.checkServer()) {
             console.log('[Backend] 服务已在运行');
+            updateSplashStatus('后端服务已就绪，正在加载界面...', 60);
             return;
         }
 
@@ -128,6 +141,7 @@ const BackendManager = {
         }
 
         console.log(`[Backend] 启动: ${cmd} ${args.join(' ')}`);
+        updateSplashStatus('正在启动后端服务...', 35);
         
         GLOBAL_STATE.pythonProcess = spawn(cmd, args, options);
         this._setupProcessListeners(GLOBAL_STATE.pythonProcess);
@@ -164,6 +178,7 @@ const BackendManager = {
         proc.stdout.on('data', (data) => {
             const str = iconv.decode(data, 'utf-8');
             console.log(`[Backend] ${str.trim()}`);
+            updateSplashStatus('后端服务启动中...', 50);
         });
 
         proc.stderr.on('data', (data) => {
@@ -222,6 +237,7 @@ const WindowManager = {
             webPreferences: { contextIsolation: true, nodeIntegration: false }
         });
         GLOBAL_STATE.splashWindow.loadFile(path.join(__dirname, '..', 'renderer', 'splash.html'));
+        updateSplashStatus('正在启动桌面客户端...', 12);
     },
 
     createMain() {
@@ -245,6 +261,7 @@ const WindowManager = {
         });
 
         GLOBAL_STATE.mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+        updateSplashStatus('正在加载界面资源...', 72);
 
         this._setupMainListeners();
         
@@ -258,6 +275,7 @@ const WindowManager = {
         win.once('ready-to-show', () => {
             // 给一个小延迟确保 CSS 渲染完成
             setTimeout(() => {
+                updateSplashStatus('界面已准备完成...', 100);
                 if (GLOBAL_STATE.splashWindow) {
                     GLOBAL_STATE.splashWindow.close();
                     GLOBAL_STATE.splashWindow = null;

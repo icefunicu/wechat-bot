@@ -123,7 +123,8 @@ class MemoryManager:
             "wx_id TEXT NOT NULL,"
             "role TEXT NOT NULL,"
             "content TEXT NOT NULL,"
-            "created_at INTEGER NOT NULL"
+            "created_at INTEGER NOT NULL,"
+            "metadata TEXT DEFAULT '{}'"
             ")"
         )
         # 索引：按 wx_id 和 id 查询（用于获取最近消息）
@@ -164,7 +165,41 @@ class MemoryManager:
         await self._conn.execute("PRAGMA temp_store = MEMORY")
         # 启用内存映射 I/O 提升读取性能
         await self._conn.execute("PRAGMA mmap_size=268435456")
+        await self._ensure_column("chat_history", "metadata", "TEXT DEFAULT '{}'")
         await self._conn.commit()
+
+    async def _ensure_column(self, table: str, column: str, definition: str) -> None:
+        if not self._conn:
+            return
+        async with self._conn.execute(f"PRAGMA table_info({table})") as cursor:
+            rows = await cursor.fetchall()
+        existing = {str(row["name"]).strip().lower() for row in rows}
+        if column.lower() in existing:
+            return
+        await self._conn.execute(
+            f"ALTER TABLE {table} ADD COLUMN {column} {definition}"
+        )
+
+    @staticmethod
+    def _serialize_metadata(metadata: Optional[Dict[str, Any]]) -> str:
+        if not isinstance(metadata, dict) or not metadata:
+            return "{}"
+        try:
+            return json.dumps(metadata, ensure_ascii=False)
+        except (TypeError, ValueError):
+            return "{}"
+
+    @staticmethod
+    def _deserialize_metadata(raw: Any) -> Dict[str, Any]:
+        if not raw:
+            return {}
+        if isinstance(raw, dict):
+            return copy.deepcopy(raw)
+        try:
+            data = json.loads(str(raw))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return {}
+        return data if isinstance(data, dict) else {}
 
     @staticmethod
     def _normalize_ttl(value: Optional[float]) -> Optional[float]:
@@ -231,7 +266,13 @@ class MemoryManager:
             row = await cursor.fetchone()
         return row is not None
 
-    async def add_message(self, wx_id: str, role: str, content: str) -> None:
+    async def add_message(
+        self,
+        wx_id: str,
+        role: str,
+        content: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
         wx_id = str(wx_id).strip()
         if not wx_id:
             return
@@ -246,9 +287,9 @@ class MemoryManager:
         
         db = await self._get_db()
         await db.execute(
-            "INSERT INTO chat_history (wx_id, role, content, created_at) "
-            "VALUES (?, ?, ?, ?)",
-            (wx_id, role, content, created_at),
+            "INSERT INTO chat_history (wx_id, role, content, created_at, metadata) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (wx_id, role, content, created_at, self._serialize_metadata(metadata)),
         )
         await db.commit()
 
@@ -268,14 +309,22 @@ class MemoryManager:
             content = str(msg.get("content", "") or "").strip()
             if not content:
                 continue
-            rows.append((wx_id, role, content, created_at))
+            rows.append(
+                (
+                    wx_id,
+                    role,
+                    content,
+                    created_at,
+                    self._serialize_metadata(msg.get("metadata")),
+                )
+            )
         if not rows:
             return 0
             
         db = await self._get_db()
         await db.executemany(
-            "INSERT INTO chat_history (wx_id, role, content, created_at) "
-            "VALUES (?, ?, ?, ?)",
+            "INSERT INTO chat_history (wx_id, role, content, created_at, metadata) "
+            "VALUES (?, ?, ?, ?, ?)",
             rows,
         )
         await db.commit()
@@ -326,7 +375,7 @@ class MemoryManager:
         # 使用 left join 获取 nickname
         sql = """
             SELECT 
-                h.id, h.wx_id, h.role, h.content, h.created_at,
+                h.id, h.wx_id, h.role, h.content, h.created_at, h.metadata,
                 u.nickname, u.relationship
             FROM chat_history h
             LEFT JOIN user_profiles u ON h.wx_id = u.wx_id
@@ -345,7 +394,8 @@ class MemoryManager:
                 "content": row["content"],
                 "timestamp": row["created_at"],
                 "sender": row["nickname"] or row["wx_id"],
-                "is_self": row["role"] == "assistant"
+                "is_self": row["role"] == "assistant",
+                "metadata": self._deserialize_metadata(row["metadata"]),
             }
             messages.append(msg)
             
@@ -408,7 +458,7 @@ class MemoryManager:
 
         query_sql = (
             "SELECT "
-            "h.id, h.wx_id, h.role, h.content, h.created_at, "
+            "h.id, h.wx_id, h.role, h.content, h.created_at, h.metadata, "
             "u.nickname, u.relationship "
             "FROM chat_history h "
             "LEFT JOIN user_profiles u ON h.wx_id = u.wx_id "
@@ -431,6 +481,7 @@ class MemoryManager:
                 "sender": row["nickname"] or row["wx_id"],
                 "is_self": row["role"] == "assistant",
                 "relationship": row["relationship"] or "unknown",
+                "metadata": self._deserialize_metadata(row["metadata"]),
             })
 
         return {

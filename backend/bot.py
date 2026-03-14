@@ -92,6 +92,7 @@ class WeChatBot:
         self._stop_event: Optional[asyncio.Event] = None
         self._is_paused: bool = False
         self._wx_supports_filter_mute: Optional[bool] = None
+        self.max_pending_tasks = 100
 
         # 缓存的过滤配置
         self.ignore_names_set: Set[str] = set()
@@ -99,15 +100,37 @@ class WeChatBot:
 
     async def initialize(self) -> Optional["WeChat"]:
         try:
+            await self.bot_manager.update_startup_state(
+                "loading_config",
+                "正在加载配置...",
+                15,
+                active=True,
+            )
             self.config_mtime = get_file_mtime(self.config_path)
             self.config = load_config(self.config_path)
         except Exception as exc:
             logging.error("无法加载配置文件: %s", exc)
+            self.bot_manager.set_issue(
+                code="config_load_failed",
+                title="配置加载失败",
+                detail=str(exc),
+                suggestions=[
+                    "检查 backend/config.py 或覆盖配置文件是否存在语法错误。",
+                    "确认配置项中的路径和数值格式正确。",
+                ],
+                recoverable=False,
+            )
             return None
 
         self._apply_config()
         
         # 初始化记忆模块
+        await self.bot_manager.update_startup_state(
+            "init_memory",
+            "正在初始化本地记忆库...",
+            28,
+            active=True,
+        )
         if self.memory is None:
             db_path = self.bot_cfg.get("memory_db_path") or self.bot_cfg.get("sqlite_db_path") or "data/chat_memory.db"
             self.memory = MemoryManager(db_path)
@@ -115,6 +138,12 @@ class WeChatBot:
         self._ensure_vector_memory()
         
         # 初始化 AI 客户端
+        await self.bot_manager.update_startup_state(
+            "init_ai",
+            "正在初始化 AI 客户端...",
+            55,
+            active=True,
+        )
         self.ai_client, preset_name = await select_ai_client(
             self.api_cfg, self.bot_cfg, self.agent_cfg
         )
@@ -124,11 +153,28 @@ class WeChatBot:
             )
             self.runtime_preset_name = preset_name or ""
             logging.info("AI 客户端初始化成功，使用预设: %s", preset_name)
+            self.bot_manager.clear_issue()
             await self._schedule_export_rag_sync(force=False)
         else:
             logging.warning("AI 客户端初始化失败，未能选择有效预设")
+            self.bot_manager.set_issue(
+                code="ai_client_unavailable",
+                title="AI 客户端初始化失败",
+                detail="未能选择到可用的 AI 预设，机器人将无法正常回复。",
+                suggestions=[
+                    "检查激活预设的 base_url、model 和 API Key。",
+                    "在设置页使用“测试连接”验证当前预设。",
+                ],
+                recoverable=False,
+            )
 
         # 初始化微信客户端
+        await self.bot_manager.update_startup_state(
+            "connect_wechat",
+            "正在连接微信客户端...",
+            78,
+            active=True,
+        )
         reconnect_policy = get_reconnect_policy(self.bot_cfg)
         self.wx = await reconnect_wechat(
             "初始化",
@@ -140,7 +186,24 @@ class WeChatBot:
             self.wx.ai_client = self.ai_client
         if self.wx is None:
             logging.error("微信初始化失败")
+            self.bot_manager.set_issue(
+                code="wechat_connect_failed",
+                title="微信连接失败",
+                detail="未能连接到微信客户端，请确认微信已启动且版本受支持。",
+                suggestions=[
+                    "检查微信 PC 是否已登录。",
+                    "确认当前微信版本为受支持的 3.9.x。",
+                    "必要时点击“一键恢复”重新连接。",
+                ],
+                recoverable=True,
+            )
             return None
+        await self.bot_manager.update_startup_state(
+            "ready",
+            "机器人已就绪",
+            100,
+            active=False,
+        )
             
         return self.wx
 
@@ -305,7 +368,7 @@ class WeChatBot:
                         task = asyncio.create_task(self.schedule_merged_reply(wx, event))
                     else:
                         task = asyncio.create_task(self.handle_event(wx, event))
-                    self.pending_tasks.add(task)
+                    self._track_pending_task(task)
                     task.add_done_callback(self.pending_tasks.discard)
 
             except KeyboardInterrupt:
@@ -573,7 +636,7 @@ class WeChatBot:
             
             task = asyncio.create_task(self.wait_and_reply(wx, chat_id, delay))
             self.pending_merge_tasks[chat_id] = task
-            self.pending_tasks.add(task)
+            self._track_pending_task(task)
             task.add_done_callback(self.pending_tasks.discard)
 
     async def wait_and_reply(self, wx: "WeChat", chat_id: str, delay: float) -> None:
@@ -764,6 +827,16 @@ class WeChatBot:
             if not reply_text:
                 return
 
+            response_metadata = self._build_reply_metadata(
+                prepared=prepared,
+                event=event,
+                chat_id=chat_id,
+                user_text=user_text,
+                reply_text=reply_text,
+                streamed=should_stream,
+            )
+            prepared.response_metadata = response_metadata
+
             # IPC 记录出口消息
             self.ipc.log_message("Bot", reply_text, "outgoing", event.sender)
 
@@ -774,7 +847,8 @@ class WeChatBot:
                 "sender": "Bot",
                 "content": reply_text,
                 "recipient": event.chat_name,
-                "timestamp": time.time()
+                "timestamp": time.time(),
+                "metadata": response_metadata,
             }))
 
             await self.ai_client.finalize_request(
@@ -1025,6 +1099,64 @@ class WeChatBot:
         state.add_reply(tokens)
         self.bot_manager._invalidate_status_cache()
         asyncio.create_task(self.bot_manager.notify_status_change())
+
+    def _track_pending_task(self, task: asyncio.Task) -> None:
+        completed = {item for item in self.pending_tasks if item.done()}
+        if completed:
+            self.pending_tasks.difference_update(completed)
+        if len(self.pending_tasks) >= self.max_pending_tasks:
+            logging.warning("待处理任务已达到上限 (%s)，跳过新增任务。", self.max_pending_tasks)
+            task.cancel()
+            return
+        self.pending_tasks.add(task)
+
+    def _build_reply_metadata(
+        self,
+        *,
+        prepared: Any,
+        event: MessageEvent,
+        chat_id: str,
+        user_text: str,
+        reply_text: str,
+        streamed: bool,
+    ) -> Dict[str, Any]:
+        user_tokens = 0
+        reply_tokens = 0
+        total_tokens = 0
+        try:
+            user_tokens, reply_tokens, total_tokens = estimate_exchange_tokens(
+                self.ai_client, user_text, reply_text
+            )
+        except Exception:
+            pass
+
+        engine = "unknown"
+        if self.ai_client and hasattr(self.ai_client, "get_status"):
+            try:
+                engine = str(self.ai_client.get_status().get("engine") or "unknown")
+            except Exception:
+                engine = "unknown"
+
+        return {
+            "kind": "assistant_reply",
+            "chat_id": chat_id,
+            "chat_name": event.chat_name,
+            "sender": event.sender,
+            "preset": self.runtime_preset_name,
+            "model": str(getattr(self.ai_client, "model", "") or ""),
+            "model_alias": get_model_alias(self.ai_client),
+            "engine": engine,
+            "streamed": streamed,
+            "timings": dict(getattr(prepared, "timings", {}) or {}),
+            "tokens": {
+                "user": user_tokens,
+                "reply": reply_tokens,
+                "total": total_tokens,
+            },
+            "emotion": dict(getattr(prepared, "trace", {}).get("emotion") or {}) or None,
+            "context_summary": dict(getattr(prepared, "trace", {}).get("context_summary") or {}),
+            "profile": dict(getattr(prepared, "trace", {}).get("profile") or {}) or None,
+        }
 
     async def _execute_ipc_command(self, wx: "WeChat", cmd: Dict) -> None:
         """执行来自 Web 的 IPC 命令"""

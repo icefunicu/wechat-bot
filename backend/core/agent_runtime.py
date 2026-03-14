@@ -30,10 +30,13 @@ class AgentPreparedRequest:
     user_text: str
     system_prompt: str
     prompt_messages: List[Any]
+    event: Any = None
     memory_context: List[dict] = field(default_factory=list)
     user_profile: Optional[Any] = None
     current_emotion: Optional[EmotionResult] = None
     timings: Dict[str, float] = field(default_factory=dict)
+    trace: Dict[str, Any] = field(default_factory=dict)
+    response_metadata: Dict[str, Any] = field(default_factory=dict)
     image_path: Optional[str] = None
 
 
@@ -240,10 +243,12 @@ class AgentRuntime:
             user_text=user_text,
             system_prompt=str(final_state.get("system_prompt") or ""),
             prompt_messages=list(final_state.get("prompt_messages") or []),
+            event=event,
             memory_context=list(final_state.get("memory_context") or []),
             user_profile=final_state.get("user_profile"),
             current_emotion=final_state.get("current_emotion"),
             timings=timings,
+            trace=dict(final_state.get("trace") or {}),
             image_path=image_path,
         )
         self._stats["last_timings"] = dict(timings)
@@ -300,11 +305,21 @@ class AgentRuntime:
     ) -> None:
         memory = dependencies.get("memory")
         if memory:
+            user_metadata = self._build_user_message_metadata(prepared)
+            assistant_metadata = dict(prepared.response_metadata or {})
             await memory.add_messages(
                 prepared.chat_id,
                 [
-                    {"role": "user", "content": prepared.user_text},
-                    {"role": "assistant", "content": reply_text},
+                    {
+                        "role": "user",
+                        "content": prepared.user_text,
+                        "metadata": user_metadata,
+                    },
+                    {
+                        "role": "assistant",
+                        "content": reply_text,
+                        "metadata": assistant_metadata,
+                    },
                 ],
             )
             if prepared.current_emotion:
@@ -438,8 +453,11 @@ class AgentRuntime:
 
         started = time.perf_counter()
         memory_context: List[dict] = []
+        short_term_preview: List[str] = []
         user_profile = None
         current_emotion: Optional[EmotionResult] = None
+        export_results: List[dict] = []
+        runtime_memory_snippets: List[str] = []
 
         tasks: List[asyncio.Task] = []
         context_task: Optional[asyncio.Task] = None
@@ -473,6 +491,11 @@ class AgentRuntime:
         if context_task is not None and not context_task.cancelled():
             try:
                 memory_context = list(context_task.result() or [])
+                short_term_preview = [
+                    str(item.get("content") or "").strip()
+                    for item in memory_context[:3]
+                    if isinstance(item, dict) and str(item.get("content") or "").strip()
+                ]
             except Exception as exc:
                 logger.warning("短期记忆加载失败 [%s]: %s", chat_id, exc)
         if profile_task is not None and not profile_task.cancelled():
@@ -498,6 +521,7 @@ class AgentRuntime:
                 rag_message = None
             if rag_message:
                 memory_context.insert(0, rag_message)
+                runtime_memory_snippets = list(rag_message.get("trace_snippets") or [])
         if emotion_task is not None and not emotion_task.cancelled():
             try:
                 current_emotion = emotion_task.result()
@@ -506,11 +530,28 @@ class AgentRuntime:
 
         timings = dict(state.get("timings") or {})
         timings["load_context_sec"] = round(time.perf_counter() - started, 4)
+        trace = {
+            "context_summary": {
+                "short_term_messages": len(memory_context),
+                "short_term_preview": short_term_preview,
+                "export_rag_hits": len(export_results),
+                "export_rag_snippets": [
+                    str(item.get("text") or "").strip()
+                    for item in export_results[:3]
+                    if isinstance(item, dict) and str(item.get("text") or "").strip()
+                ],
+                "runtime_memory_hits": len(runtime_memory_snippets),
+                "runtime_memory_snippets": runtime_memory_snippets[:3],
+            },
+            "emotion": self._serialize_emotion(current_emotion),
+            "profile": self._serialize_profile(user_profile),
+        }
         return {
             "memory_context": memory_context,
             "user_profile": user_profile,
             "current_emotion": current_emotion,
             "timings": timings,
+            "trace": trace,
             "event": event,
             "chat_id": chat_id,
             "user_text": user_text,
@@ -626,6 +667,8 @@ class AgentRuntime:
         return {
             "role": "system",
             "content": "Relevant past memories:\n" + "\n".join(lines),
+            "hit_count": len(lines),
+            "trace_snippets": lines[:5],
         }
 
     async def _analyze_emotion(self, chat_id: str, text: str) -> Optional[EmotionResult]:
@@ -687,6 +730,46 @@ class AgentRuntime:
             )
         except Exception as exc:
             logger.warning("向量记忆更新失败: %s", exc)
+
+    @staticmethod
+    def _serialize_emotion(emotion: Optional[EmotionResult]) -> Optional[Dict[str, Any]]:
+        if emotion is None:
+            return None
+        if hasattr(emotion, "model_dump"):
+            return emotion.model_dump()
+        if hasattr(emotion, "dict"):
+            return emotion.dict()
+        return {
+            "emotion": getattr(emotion, "emotion", "neutral"),
+            "confidence": getattr(emotion, "confidence", 0.0),
+            "intensity": getattr(emotion, "intensity", 1),
+            "keywords_matched": list(getattr(emotion, "keywords_matched", []) or []),
+            "suggested_tone": getattr(emotion, "suggested_tone", ""),
+        }
+
+    @staticmethod
+    def _serialize_profile(profile: Any) -> Optional[Dict[str, Any]]:
+        if profile is None:
+            return None
+        return {
+            "nickname": str(getattr(profile, "nickname", "") or ""),
+            "relationship": str(getattr(profile, "relationship", "unknown") or "unknown"),
+            "message_count": int(getattr(profile, "message_count", 0) or 0),
+        }
+
+    @staticmethod
+    def _build_user_message_metadata(prepared: AgentPreparedRequest) -> Dict[str, Any]:
+        event = prepared.event
+        if event is None:
+            return {}
+        return {
+            "kind": "incoming_message",
+            "chat_name": str(getattr(event, "chat_name", "") or ""),
+            "sender": str(getattr(event, "sender", "") or ""),
+            "is_group": bool(getattr(event, "is_group", False)),
+            "message_type": int(getattr(event, "msg_type", 0) or 0),
+            "emotion": dict(prepared.trace.get("emotion") or {}) or None,
+        }
 
     async def _extract_facts_background(
         self,

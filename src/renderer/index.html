@@ -293,6 +293,21 @@
                                         <span id="bot-transport-version">微信: --</span>
                                     </div>
                                     <div class="bot-warning" id="bot-transport-warning" hidden></div>
+                                    <div class="startup-panel" id="bot-startup-panel" hidden>
+                                        <div class="startup-panel-header">
+                                            <span id="bot-startup-label">正在启动机器人...</span>
+                                            <span id="bot-startup-meta">0%</span>
+                                        </div>
+                                        <div class="startup-progress-bar">
+                                            <div class="startup-progress-fill" id="bot-startup-progress"></div>
+                                        </div>
+                                    </div>
+                                    <div class="bot-diagnostics" id="bot-diagnostics" hidden>
+                                        <div class="bot-diagnostics-title" id="bot-diagnostics-title">运行诊断</div>
+                                        <div class="bot-diagnostics-detail" id="bot-diagnostics-detail"></div>
+                                        <ul class="bot-diagnostics-list" id="bot-diagnostics-list"></ul>
+                                        <button class="btn btn-cta btn-sm" id="btn-recover-bot">一键恢复</button>
+                                    </div>
                                 </div>
                             </div>
                             <div class="bot-actions">
@@ -1310,6 +1325,22 @@
             <div class="modal-footer">
                 <button class="btn btn-secondary btn-sm" id="btn-close-choice-minimize">最小化到托盘</button>
                 <button class="btn btn-primary btn-sm" id="btn-close-choice-quit">彻底关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="message-detail-modal">
+        <div class="modal modal-wide">
+            <div class="modal-header">
+                <h3 class="modal-title">消息详情</h3>
+                <button class="modal-close" id="btn-close-message-detail">
+                    <svg class="icon icon-sm">
+                        <use href="#icon-x" />
+                    </svg>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div id="message-detail-body"></div>
             </div>
         </div>
     </div>

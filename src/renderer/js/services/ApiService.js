@@ -151,6 +151,13 @@ class ApiService {
     }
 
     /**
+     * 一键恢复机器人
+     */
+    async recoverBot() {
+        return this.request('/api/recover', { method: 'POST' });
+    }
+
+    /**
      * 暂停机器人
      * @param {string} reason - 暂停原因
      */

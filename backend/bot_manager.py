@@ -64,6 +64,13 @@ class BotManager:
         self._stats_cache: Optional[Dict[str, Any]] = None
         self._stats_cache_time: float = 0.0
         self._stats_cache_ttl: float = 2.0
+        self._startup_state: Dict[str, Any] = self._make_startup_state(
+            stage="idle",
+            message="机器人未启动",
+            progress=0,
+            active=False,
+        )
+        self._last_issue: Optional[Dict[str, Any]] = None
         
         # 共享组件
         self.memory_manager = None
@@ -115,6 +122,13 @@ class BotManager:
                 
                 # 重置停止事件
                 self.stop_event.clear()
+                self.clear_issue()
+                await self.update_startup_state(
+                    "starting",
+                    "正在创建机器人实例...",
+                    8,
+                    active=True,
+                )
                 state = get_bot_state()
                 
                 # 创建机器人实例
@@ -142,6 +156,23 @@ class BotManager:
                 self.is_running = False
                 self.bot = None
                 self.task = None
+                self.set_issue(
+                    code="bot_start_failed",
+                    title="机器人启动失败",
+                    detail=str(e),
+                    suggestions=[
+                        "检查当前 AI 预设是否可用。",
+                        "确认微信 PC 已启动并保持登录。",
+                        "如问题持续，请查看日志页中的错误明细。",
+                    ],
+                    recoverable=True,
+                )
+                self._startup_state = self._make_startup_state(
+                    stage="failed",
+                    message="启动失败",
+                    progress=100,
+                    active=False,
+                )
                 self._invalidate_status_cache()
                 return {'success': False, 'message': f'启动失败: {str(e)}'}
     
@@ -153,9 +184,27 @@ class BotManager:
             logger.info("机器人任务被取消")
         except Exception as e:
             logger.error(f"机器人运行错误: {e}")
+            self.set_issue(
+                code="bot_runtime_error",
+                title="机器人运行异常",
+                detail=str(e),
+                suggestions=[
+                    "检查微信连接状态与当前支持的版本。",
+                    "检查 AI 服务是否可访问。",
+                    "点击“一键恢复”后再次观察是否复现。",
+                ],
+                recoverable=True,
+            )
         finally:
             self.is_running = False
             self.start_time = None
+            if self._startup_state.get("active"):
+                self._startup_state = self._make_startup_state(
+                    stage="stopped",
+                    message="机器人未运行",
+                    progress=0,
+                    active=False,
+                )
             self._invalidate_status_cache()
             await self.notify_status_change()
             logger.info("机器人已停止")
@@ -197,6 +246,12 @@ class BotManager:
                 self.is_running = False
                 self.is_paused = False
                 self.start_time = None
+                self._startup_state = self._make_startup_state(
+                    stage="stopped",
+                    message="机器人已停止",
+                    progress=0,
+                    active=False,
+                )
                 self._invalidate_status_cache()
                 await self.notify_status_change()
                 
@@ -236,6 +291,12 @@ class BotManager:
     async def restart(self) -> Dict[str, Any]:
         """重启机器人"""
         await self.stop()
+        return await self.start()
+
+    async def recover(self) -> Dict[str, Any]:
+        """执行一键恢复。"""
+        if self.is_running:
+            return await self.restart()
         return await self.start()
 
     async def reload_runtime_config(
@@ -344,6 +405,7 @@ class BotManager:
             'total_replies': stats.get('total_replies', 0),
             'total_tokens': stats.get('total_tokens', 0),
             'engine': 'langgraph',
+            'startup': dict(self._startup_state),
         }
         if self.bot and hasattr(self.bot, 'get_export_rag_status'):
             try:
@@ -375,6 +437,7 @@ class BotManager:
                 status.update(self.bot.get_transport_status())
             except Exception:
                 pass
+        status['diagnostics'] = self._build_diagnostics(status)
         self._status_cache = status
         self._status_cache_time = now
         return dict(status)
@@ -407,6 +470,108 @@ class BotManager:
 
     async def notify_status_change(self) -> None:
         await self.broadcast_event("status_change", self.get_status())
+
+    async def update_startup_state(
+        self,
+        stage: str,
+        message: str,
+        progress: int,
+        *,
+        active: bool,
+    ) -> None:
+        self._startup_state = self._make_startup_state(
+            stage=stage,
+            message=message,
+            progress=progress,
+            active=active,
+        )
+        self._invalidate_status_cache()
+        await self.notify_status_change()
+
+    def set_issue(
+        self,
+        *,
+        code: str,
+        title: str,
+        detail: str = "",
+        suggestions: Optional[list[str]] = None,
+        recoverable: bool = True,
+        level: str = "error",
+    ) -> None:
+        self._last_issue = {
+            "level": level,
+            "code": code,
+            "title": title,
+            "detail": detail,
+            "suggestions": list(suggestions or []),
+            "recoverable": recoverable,
+            "updated_at": time.time(),
+            "action_label": "一键恢复" if recoverable else "",
+        }
+        self._startup_state = self._make_startup_state(
+            stage="failed",
+            message=title,
+            progress=100,
+            active=False,
+        )
+        self._invalidate_status_cache()
+
+    def clear_issue(self) -> None:
+        self._last_issue = None
+        self._invalidate_status_cache()
+
+    @staticmethod
+    def _make_startup_state(
+        *,
+        stage: str,
+        message: str,
+        progress: int,
+        active: bool,
+    ) -> Dict[str, Any]:
+        return {
+            "stage": str(stage or "idle"),
+            "message": str(message or ""),
+            "progress": max(0, min(int(progress or 0), 100)),
+            "active": bool(active),
+            "updated_at": time.time(),
+        }
+
+    def _build_diagnostics(self, status: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if self._last_issue:
+            return dict(self._last_issue)
+
+        transport_status = str(status.get("transport_status") or "").strip().lower()
+        transport_warning = str(status.get("transport_warning") or "").strip()
+        if self.is_running and transport_status == "disconnected":
+            return {
+                "level": "error",
+                "code": "wechat_disconnected",
+                "title": "微信连接已断开",
+                "detail": "机器人正在运行，但当前未检测到有效的微信连接。",
+                "suggestions": [
+                    "确认微信 PC 客户端已启动且保持登录。",
+                    "确认当前微信版本受项目支持。",
+                    "点击“一键恢复”重新建立连接。",
+                ],
+                "recoverable": True,
+                "updated_at": time.time(),
+                "action_label": "一键恢复",
+            }
+        if transport_warning:
+            return {
+                "level": "warning",
+                "code": "transport_warning",
+                "title": "运行环境存在兼容性提示",
+                "detail": transport_warning,
+                "suggestions": [
+                    "优先检查当前微信版本是否符合要求。",
+                    "如消息发送或引用异常，可先执行重启恢复。",
+                ],
+                "recoverable": True,
+                "updated_at": time.time(),
+                "action_label": "一键恢复",
+            }
+        return None
 
     async def broadcast_event(self, event_type: str, data: Any) -> None:
         """

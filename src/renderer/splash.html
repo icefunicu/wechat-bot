@@ -148,6 +148,25 @@
             opacity: 0;
             animation: fadeIn 0.6s ease-out 0.7s forwards;
         }
+
+        .progress {
+            width: 220px;
+            height: 6px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.08);
+            overflow: hidden;
+            margin-top: 22px;
+            opacity: 0;
+            animation: fadeIn 0.6s ease-out 0.6s forwards;
+        }
+
+        .progress-fill {
+            width: 12%;
+            height: 100%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, #3B82F6, #60A5FA);
+            transition: width 0.25s ease;
+        }
     </style>
 </head>
 
@@ -168,8 +187,24 @@
             <div class="loader-dot"></div>
             <div class="loader-dot"></div>
         </div>
-        <div class="status">正在初始化...</div>
+        <div class="progress">
+            <div class="progress-fill" id="progress-fill"></div>
+        </div>
+        <div class="status" id="status-text">正在初始化...</div>
     </div>
+    <script>
+        window.updateSplashStatus = (message, progress) => {
+            const status = document.getElementById('status-text');
+            const fill = document.getElementById('progress-fill');
+            if (status && typeof message === 'string') {
+                status.textContent = message;
+            }
+            if (fill && Number.isFinite(progress)) {
+                const value = Math.max(0, Math.min(Number(progress), 100));
+                fill.style.width = `${value}%`;
+            }
+        };
+    </script>
 </body>
 
 </html>
