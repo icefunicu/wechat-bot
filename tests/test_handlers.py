@@ -31,6 +31,10 @@ class SenderHandlersTest(unittest.TestCase):
         self.assertEqual(parse_send_result(MockResult(True)), (True, "done"))
         self.assertEqual(parse_send_result(MockResult(False)), (False, "done"))
 
+    def test_parse_send_result_accepts_zero_status_code(self):
+        self.assertEqual(parse_send_result(0), (True, None))
+        self.assertEqual(parse_send_result(1), (False, "1"))
+
 
 class ConvertersTest(unittest.TestCase):
     def test_normalize_msg_item_bad_timestamp(self):
@@ -46,6 +50,20 @@ class ConvertersTest(unittest.TestCase):
         event = normalize_message_item("chat", mock_item, "me", "friend")
         self.assertIsNotNone(event)
         self.assertIsNone(event.timestamp)
+
+    def test_normalize_msg_item_honors_explicit_at_me(self):
+        class MockItem:
+            pass
+
+        mock_item = MockItem()
+        mock_item.type = "text"
+        mock_item.content = "hello"
+        mock_item.sender = "user"
+        mock_item.is_at_me = True
+
+        event = normalize_message_item("group", mock_item, "me", "group")
+        self.assertIsNotNone(event)
+        self.assertTrue(event.is_at_me)
 
 
 if __name__ == "__main__":

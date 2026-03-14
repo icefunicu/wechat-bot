@@ -32,9 +32,18 @@ def mock_manager():
 
     # Mock MemoryManager
     mem_mgr = MagicMock()
-    async def async_get_messages(*args, **kwargs):
+    async def async_get_message_page(*args, **kwargs):
+        return {
+            "messages": [],
+            "total": 0,
+            "limit": kwargs.get("limit", 50),
+            "offset": kwargs.get("offset", 0),
+            "has_more": False,
+        }
+    async def async_list_chat_summaries(*args, **kwargs):
         return []
-    mem_mgr.get_global_recent_messages = MagicMock(side_effect=async_get_messages)
+    mem_mgr.get_message_page = MagicMock(side_effect=async_get_message_page)
+    mem_mgr.list_chat_summaries = MagicMock(side_effect=async_list_chat_summaries)
     manager.get_memory_manager.return_value = mem_mgr
     
     # Replace the manager in the api module
@@ -69,7 +78,13 @@ async def test_api_messages(client, mock_manager):
     response = await client.get('/api/messages?limit=10')
     assert response.status_code == 200
     mock_manager.get_memory_manager.assert_called()
-    mock_manager.get_memory_manager().get_global_recent_messages.assert_called_with(limit=10)
+    mock_manager.get_memory_manager().get_message_page.assert_called_with(
+        limit=10,
+        offset=0,
+        chat_id='',
+        keyword='',
+    )
+    mock_manager.get_memory_manager().list_chat_summaries.assert_called_once()
 
 @pytest.mark.asyncio
 async def test_api_send(client, mock_manager):
@@ -91,7 +106,7 @@ async def test_api_usage(client, mock_manager):
 
 @pytest.mark.asyncio
 async def test_api_messages_error(client, mock_manager):
-    mock_manager.get_memory_manager().get_global_recent_messages.side_effect = Exception("DB Error")
+    mock_manager.get_memory_manager().get_message_page.side_effect = Exception("DB Error")
     response = await client.get('/api/messages?limit=10')
     assert response.status_code == 200
     data = await response.get_json()
@@ -194,6 +209,29 @@ async def test_api_config_marks_ollama_as_no_key_required(client):
     assert preset["provider_id"] == "ollama"
     assert preset["api_key_required"] is False
     assert preset["api_key_configured"] is False
+
+
+@pytest.mark.asyncio
+async def test_api_config_masks_langsmith_key(client):
+    test_config = {
+        "api": {"presets": []},
+        "bot": {},
+        "logging": {},
+        "agent": {
+            "enabled": True,
+            "langsmith_enabled": True,
+            "langsmith_project": "wechat-chat",
+            "langsmith_api_key": "lsv2_pt_secret_key",
+        },
+    }
+
+    with patch("backend.config.CONFIG", test_config):
+        response = await client.get("/api/config")
+
+    data = await response.get_json()
+    assert data["agent"]["langsmith_enabled"] is True
+    assert data["agent"]["langsmith_api_key_configured"] is True
+    assert "langsmith_api_key" not in data["agent"]
 
 
 @pytest.mark.asyncio

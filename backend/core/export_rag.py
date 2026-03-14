@@ -2,7 +2,7 @@
 导出聊天记录驱动的个性化 RAG。
 
 目标：
-- 自动扫描 `chat_exports/聊天记录`
+- 自动扫描 `data/chat_exports/聊天记录`
 - 为导出语料建立联系人级风格向量索引
 - 在回复前按联系人召回本人历史表达片段
 """
@@ -45,7 +45,7 @@ class ExportChatRAG:
     def __init__(self, vector_memory: Any):
         self.vector_memory = vector_memory
         self.enabled = False
-        self.base_dir = os.path.join("chat_exports", "聊天记录")
+        self.base_dir = os.path.join("data", "chat_exports", "聊天记录")
         self.auto_ingest = True
         self.max_chunks_per_chat = 500
         self.chunk_messages = 6
@@ -53,6 +53,7 @@ class ExportChatRAG:
         self.min_score = 1.0
         self.max_context_chars = 900
         self.prefer_recent = True
+        self.max_parallel_embeddings = 4
         self.self_name = "知有"
         self.manifest_path = os.path.join("data", "export_rag_manifest.json")
 
@@ -64,7 +65,7 @@ class ExportChatRAG:
     def update_config(self, bot_cfg: Dict[str, Any]) -> None:
         self.enabled = bool(bot_cfg.get("export_rag_enabled", False))
         self.base_dir = str(
-            bot_cfg.get("export_rag_dir") or os.path.join("chat_exports", "聊天记录")
+            bot_cfg.get("export_rag_dir") or os.path.join("data", "chat_exports", "聊天记录")
         ).strip()
         self.auto_ingest = bool(bot_cfg.get("export_rag_auto_ingest", True))
         self.max_chunks_per_chat = as_int(
@@ -81,6 +82,9 @@ class ExportChatRAG:
             bot_cfg.get("export_rag_max_context_chars", 900), 900, min_value=120
         )
         self.prefer_recent = bool(bot_cfg.get("export_rag_prefer_recent", True))
+        self.max_parallel_embeddings = as_int(
+            bot_cfg.get("export_rag_max_parallel_embeddings", 4), 4, min_value=1
+        )
         self.self_name = str(bot_cfg.get("self_name") or "知有").strip() or "知有"
 
     def get_status(self) -> Dict[str, Any]:
@@ -123,29 +127,28 @@ class ExportChatRAG:
         manifest = await asyncio.to_thread(self._load_manifest)
         next_manifest: Dict[str, Dict[str, Any]] = {}
         targets = await asyncio.to_thread(self._discover_targets)
-        summary["scanned_files"] = len(targets)
+        summary["scanned_files"] = sum(len(target["csv_paths"]) for target in targets)
 
         for target in targets:
-            relative_path = target["relative_path"]
+            manifest_key = target["manifest_key"]
             signature = target["signature"]
             chat_id = target["chat_id"]
-            previous = manifest.get(relative_path)
+            previous = manifest.get(manifest_key)
 
             if not force and previous and previous.get("signature") == signature:
-                next_manifest[relative_path] = previous
+                next_manifest[manifest_key] = previous
                 summary["skipped_files"] += 1
                 continue
 
             try:
                 records = await asyncio.to_thread(
-                    load_chat_from_csv,
-                    target["csv_path"],
-                    self.self_name,
+                    self._load_contact_records,
+                    target["csv_paths"],
                 )
                 chunks = self._build_chunks(
                     chat_id=chat_id,
                     contact_name=target["contact_name"],
-                    source_file=relative_path,
+                    source_file=" | ".join(target["relative_paths"]),
                     records=records,
                 )
                 await asyncio.to_thread(
@@ -153,7 +156,7 @@ class ExportChatRAG:
                     {"chat_id": chat_id, "source": "export_chat"},
                 )
                 indexed_count = await self._index_chunks(ai_client, chunks)
-                next_manifest[relative_path] = {
+                next_manifest[manifest_key] = {
                     "signature": signature,
                     "chat_id": chat_id,
                     "contact_name": target["contact_name"],
@@ -263,8 +266,8 @@ class ExportChatRAG:
         self.last_scan_summary = dict(summary)
         return summary
 
-    def _discover_targets(self) -> List[Dict[str, str]]:
-        targets: List[Dict[str, str]] = []
+    def _discover_targets(self) -> List[Dict[str, Any]]:
+        targets: List[Dict[str, Any]] = []
         for dirname in sorted(os.listdir(self.base_dir)):
             dir_path = os.path.join(self.base_dir, dirname)
             if not os.path.isdir(dir_path):
@@ -277,43 +280,70 @@ class ExportChatRAG:
             )
             if not csv_files:
                 continue
-            csv_path = os.path.join(dir_path, csv_files[0])
-            stat = os.stat(csv_path)
-            relative_path = os.path.relpath(csv_path, self.base_dir)
+            csv_paths = [os.path.join(dir_path, filename) for filename in csv_files]
+            relative_paths = [os.path.relpath(csv_path, self.base_dir) for csv_path in csv_paths]
+            signature_parts = []
+            for csv_path in csv_paths:
+                stat = os.stat(csv_path)
+                signature_parts.append(f"{stat.st_mtime_ns}:{stat.st_size}:{os.path.basename(csv_path)}")
             targets.append({
                 "contact_name": contact_name,
                 "chat_id": f"friend:{contact_name}",
-                "csv_path": csv_path,
-                "relative_path": relative_path,
-                "signature": f"{stat.st_mtime_ns}:{stat.st_size}:{self.self_name}:{self.chunk_messages}:{self.max_chunks_per_chat}",
+                "csv_paths": csv_paths,
+                "relative_paths": relative_paths,
+                "manifest_key": f"friend:{contact_name}",
+                "signature": (
+                    f"{'|'.join(signature_parts)}:"
+                    f"{self.self_name}:{self.chunk_messages}:{self.max_chunks_per_chat}"
+                ),
             })
         return targets
 
     async def _index_chunks(self, ai_client: Any, chunks: Sequence[ExportChunk]) -> int:
+        semaphore = asyncio.Semaphore(self.max_parallel_embeddings)
+
+        async def _index_one(chunk: ExportChunk) -> int:
+            async with semaphore:
+                embedding = await ai_client.get_embedding(chunk.text)
+                if not embedding:
+                    return 0
+                metadata = {
+                    "chat_id": chunk.chat_id,
+                    "contact_name": chunk.contact_name,
+                    "source": "export_chat",
+                    "scope": "style",
+                    "timestamp": chunk.timestamp,
+                    "source_file": chunk.source_file,
+                    "chunk_index": chunk.chunk_index,
+                }
+                chunk_id = self._chunk_id(chunk)
+                await asyncio.to_thread(
+                    self.vector_memory.upsert_text,
+                    chunk.text,
+                    metadata,
+                    chunk_id,
+                    embedding,
+                )
+                return 1
+
+        tasks = [asyncio.create_task(_index_one(chunk)) for chunk in chunks]
         indexed = 0
-        for chunk in chunks:
-            embedding = await ai_client.get_embedding(chunk.text)
-            if not embedding:
-                continue
-            metadata = {
-                "chat_id": chunk.chat_id,
-                "contact_name": chunk.contact_name,
-                "source": "export_chat",
-                "scope": "style",
-                "timestamp": chunk.timestamp,
-                "source_file": chunk.source_file,
-                "chunk_index": chunk.chunk_index,
-            }
-            chunk_id = self._chunk_id(chunk)
-            await asyncio.to_thread(
-                self.vector_memory.upsert_text,
-                chunk.text,
-                metadata,
-                chunk_id,
-                embedding,
-            )
-            indexed += 1
+        for task in asyncio.as_completed(tasks):
+            indexed += await task
         return indexed
+
+    def _load_contact_records(self, csv_paths: Sequence[str]) -> List[Dict[str, Any]]:
+        records: List[Dict[str, Any]] = []
+        for csv_path in csv_paths:
+            records.extend(load_chat_from_csv(csv_path, self.self_name))
+        records.sort(
+            key=lambda item: (
+                item.get("timestamp").timestamp()
+                if hasattr(item.get("timestamp"), "timestamp")
+                else 0.0
+            )
+        )
+        return records
 
     def _build_chunks(
         self,

@@ -11,7 +11,7 @@
     MemoryManager: 核心管理器类，封装了所有数据库操作
 
 使用示例:
-    manager = MemoryManager("chat_history.db")
+    manager = MemoryManager("data/chat_memory.db")
     await manager.add_message("user_123", "user", "你好！")
     context = await manager.get_recent_context("user_123", limit=10)
     await manager.close()
@@ -73,7 +73,7 @@ class MemoryManager:
 
     def __init__(
         self,
-        db_path: str = "chat_history.db",
+        db_path: str = "data/chat_memory.db",
         ttl_sec: Optional[float] = None,
         cleanup_interval_sec: float = 300.0,
     ) -> None:
@@ -350,6 +350,132 @@ class MemoryManager:
             messages.append(msg)
             
         return messages
+
+    async def get_message_page(
+        self,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        chat_id: str = "",
+        keyword: str = "",
+    ) -> Dict[str, Any]:
+        """按条件分页获取消息列表。"""
+        await self._maybe_cleanup()
+
+        try:
+            limit_val = int(limit)
+        except (TypeError, ValueError):
+            limit_val = 50
+        limit_val = max(1, min(limit_val, 200))
+
+        try:
+            offset_val = int(offset)
+        except (TypeError, ValueError):
+            offset_val = 0
+        offset_val = max(0, offset_val)
+
+        chat_id_val = str(chat_id or "").strip()
+        keyword_val = str(keyword or "").strip()
+        like_value = f"%{keyword_val}%"
+
+        where_clauses: List[str] = []
+        params: List[Any] = []
+        if chat_id_val:
+            where_clauses.append("h.wx_id = ?")
+            params.append(chat_id_val)
+        if keyword_val:
+            where_clauses.append(
+                "("
+                "h.content LIKE ? "
+                "OR COALESCE(u.nickname, '') LIKE ? "
+                "OR h.wx_id LIKE ?"
+                ")"
+            )
+            params.extend([like_value, like_value, like_value])
+
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+        db = await self._get_db()
+
+        count_sql = (
+            "SELECT COUNT(*) "
+            "FROM chat_history h "
+            "LEFT JOIN user_profiles u ON h.wx_id = u.wx_id "
+            f"{where_sql}"
+        )
+        async with db.execute(count_sql, tuple(params)) as cursor:
+            count_row = await cursor.fetchone()
+        total = int(count_row[0]) if count_row else 0
+
+        query_sql = (
+            "SELECT "
+            "h.id, h.wx_id, h.role, h.content, h.created_at, "
+            "u.nickname, u.relationship "
+            "FROM chat_history h "
+            "LEFT JOIN user_profiles u ON h.wx_id = u.wx_id "
+            f"{where_sql} "
+            "ORDER BY h.id DESC "
+            "LIMIT ? OFFSET ?"
+        )
+        query_params = [*params, limit_val, offset_val]
+        async with db.execute(query_sql, tuple(query_params)) as cursor:
+            rows = await cursor.fetchall()
+
+        messages: List[Dict[str, Any]] = []
+        for row in rows:
+            messages.append({
+                "id": row["id"],
+                "wx_id": row["wx_id"],
+                "role": row["role"],
+                "content": row["content"],
+                "timestamp": row["created_at"],
+                "sender": row["nickname"] or row["wx_id"],
+                "is_self": row["role"] == "assistant",
+                "relationship": row["relationship"] or "unknown",
+            })
+
+        return {
+            "messages": messages,
+            "total": total,
+            "limit": limit_val,
+            "offset": offset_val,
+            "has_more": offset_val + len(messages) < total,
+        }
+
+    async def list_chat_summaries(self, limit: int = 200) -> List[Dict[str, Any]]:
+        """返回消息中心可用的会话摘要。"""
+        await self._maybe_cleanup()
+
+        try:
+            limit_val = int(limit)
+        except (TypeError, ValueError):
+            limit_val = 200
+        limit_val = max(1, min(limit_val, 500))
+
+        db = await self._get_db()
+        sql = """
+            SELECT
+                h.wx_id,
+                COALESCE(u.nickname, h.wx_id) AS display_name,
+                COUNT(*) AS message_count,
+                MAX(h.created_at) AS last_timestamp
+            FROM chat_history h
+            LEFT JOIN user_profiles u ON h.wx_id = u.wx_id
+            GROUP BY h.wx_id, COALESCE(u.nickname, h.wx_id)
+            ORDER BY MAX(h.id) DESC
+            LIMIT ?
+        """
+        async with db.execute(sql, (limit_val,)) as cursor:
+            rows = await cursor.fetchall()
+
+        chats: List[Dict[str, Any]] = []
+        for row in rows:
+            chats.append({
+                "chat_id": row["wx_id"],
+                "display_name": row["display_name"],
+                "message_count": int(row["message_count"] or 0),
+                "last_timestamp": row["last_timestamp"],
+            })
+        return chats
 
     # ==================== 用户画像方法 ====================
 

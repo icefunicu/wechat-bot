@@ -222,8 +222,22 @@ class ApiService {
     /**
      * 获取消息列表
      */
-    async getMessages() {
-        return this.request('/api/messages');
+    async getMessages(params = {}) {
+        const searchParams = new URLSearchParams();
+        if (params.limit !== undefined && params.limit !== null) {
+            searchParams.set('limit', String(params.limit));
+        }
+        if (params.offset !== undefined && params.offset !== null) {
+            searchParams.set('offset', String(params.offset));
+        }
+        if (params.chatId) {
+            searchParams.set('chat_id', params.chatId);
+        }
+        if (params.keyword) {
+            searchParams.set('keyword', params.keyword);
+        }
+        const query = searchParams.toString();
+        return this.request(query ? `/api/messages?${query}` : '/api/messages');
     }
 
     /**

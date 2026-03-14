@@ -2,7 +2,7 @@
 聊天记录分析与个性化 Prompt 生成工具。
 
 功能：
-    1. 从 chat_exports/聊天记录 目录读取 CSV 聊天记录
+    1. 从 data/chat_exports/聊天记录 目录读取 CSV 聊天记录
     2. 统计每个联系人的消息数量
     3. 找出聊天最多的 Top N 联系人
     4. 为每个 Top N 联系人生成个性化 system_prompt
@@ -48,7 +48,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # 路径配置
-CHAT_EXPORTS_DIR = "chat_exports"
+CHAT_EXPORTS_DIR = os.path.join("data", "chat_exports")
 CHAT_RECORDS_SUBDIR = "聊天记录"
 CHAT_RECORDS_BASE = os.path.join(CHAT_EXPORTS_DIR, CHAT_RECORDS_SUBDIR)
 

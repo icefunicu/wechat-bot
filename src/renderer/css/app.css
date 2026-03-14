@@ -495,6 +495,22 @@ a:hover {
     width: 180px;
 }
 
+.message-chat-filter {
+    min-width: 220px;
+    height: 34px;
+    padding-top: 6px;
+    padding-bottom: 6px;
+}
+
+.message-toolbar-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 4px 0 14px;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
 .message-list {
     display: flex;
     flex-direction: column;
@@ -505,6 +521,12 @@ a:hover {
     height: calc(100vh - 220px);
     overflow: auto;
     padding-right: 6px;
+}
+
+.message-footer-actions {
+    display: flex;
+    justify-content: center;
+    margin-top: 14px;
 }
 
 .message-item {
@@ -1054,6 +1076,22 @@ input[type="checkbox"]:checked::after {
     font-size: 14px;
     color: var(--text-secondary);
     font-weight: 500;
+}
+
+.bot-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.bot-warning {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #f59e0b;
+    line-height: 1.5;
 }
 
 .bot-actions {

@@ -955,6 +955,64 @@ export class SettingsPage extends PageController {
             emotionLog.checked = !!bot.emotion_log_enabled;
         }
 
+        const agent = config.agent || {};
+        const agentEnabled = this.$('#setting-agent-enabled');
+        if (agentEnabled) {
+            agentEnabled.checked = agent.enabled !== false;
+        }
+        const agentStreaming = this.$('#setting-agent-streaming-enabled');
+        if (agentStreaming) {
+            agentStreaming.checked = agent.streaming_enabled !== false;
+        }
+        const agentGraphMode = this.$('#setting-agent-graph-mode');
+        if (agentGraphMode) {
+            agentGraphMode.value = agent.graph_mode || 'state_graph';
+        }
+        const agentHistoryStrategy = this.$('#setting-agent-history-strategy');
+        if (agentHistoryStrategy) {
+            agentHistoryStrategy.value = agent.history_strategy || 'sqlite_memory';
+        }
+        const agentTopK = this.$('#setting-agent-retriever-top-k');
+        if (agentTopK) {
+            agentTopK.value = agent.retriever_top_k ?? 3;
+        }
+        const agentThreshold = this.$('#setting-agent-retriever-threshold');
+        if (agentThreshold) {
+            agentThreshold.value = agent.retriever_score_threshold ?? 1.0;
+        }
+        const agentCacheTtl = this.$('#setting-agent-embedding-cache-ttl');
+        if (agentCacheTtl) {
+            agentCacheTtl.value = agent.embedding_cache_ttl_sec ?? 300;
+        }
+        const agentMaxParallel = this.$('#setting-agent-max-parallel-retrievers');
+        if (agentMaxParallel) {
+            agentMaxParallel.value = agent.max_parallel_retrievers ?? 3;
+        }
+        const agentFacts = this.$('#setting-agent-background-facts');
+        if (agentFacts) {
+            agentFacts.checked = agent.background_fact_extraction_enabled !== false;
+        }
+        const agentEmotionFastPath = this.$('#setting-agent-emotion-fast-path');
+        if (agentEmotionFastPath) {
+            agentEmotionFastPath.checked = agent.emotion_fast_path_enabled !== false;
+        }
+        const agentLangSmithEnabled = this.$('#setting-agent-langsmith-enabled');
+        if (agentLangSmithEnabled) {
+            agentLangSmithEnabled.checked = !!agent.langsmith_enabled;
+        }
+        const agentLangSmithProject = this.$('#setting-agent-langsmith-project');
+        if (agentLangSmithProject) {
+            agentLangSmithProject.value = agent.langsmith_project || 'wechat-chat';
+        }
+        const agentLangSmithEndpoint = this.$('#setting-agent-langsmith-endpoint');
+        if (agentLangSmithEndpoint) {
+            agentLangSmithEndpoint.value = agent.langsmith_endpoint || '';
+        }
+        const agentLangSmithKeyStatus = this.$('#setting-agent-langsmith-key-status');
+        if (agentLangSmithKeyStatus) {
+            agentLangSmithKeyStatus.value = agent.langsmith_api_key_configured ? '已配置' : '未配置';
+        }
+
         const loggingCfg = config.logging || {};
         const logLevel = this.$('#setting-log-level');
         if (logLevel) {
@@ -1199,6 +1257,22 @@ export class SettingsPage extends PageController {
                 log_reply_content: this.$('#setting-log-reply-content')?.checked
             };
 
+            const agentSettings = {
+                enabled: this.$('#setting-agent-enabled')?.checked,
+                streaming_enabled: this.$('#setting-agent-streaming-enabled')?.checked,
+                graph_mode: this.$('#setting-agent-graph-mode')?.value,
+                history_strategy: this.$('#setting-agent-history-strategy')?.value,
+                retriever_top_k: parseNumber(this.$('#setting-agent-retriever-top-k')?.value),
+                retriever_score_threshold: parseNumber(this.$('#setting-agent-retriever-threshold')?.value),
+                embedding_cache_ttl_sec: parseNumber(this.$('#setting-agent-embedding-cache-ttl')?.value),
+                max_parallel_retrievers: parseNumber(this.$('#setting-agent-max-parallel-retrievers')?.value),
+                background_fact_extraction_enabled: this.$('#setting-agent-background-facts')?.checked,
+                emotion_fast_path_enabled: this.$('#setting-agent-emotion-fast-path')?.checked,
+                langsmith_enabled: this.$('#setting-agent-langsmith-enabled')?.checked,
+                langsmith_project: this.$('#setting-agent-langsmith-project')?.value,
+                langsmith_endpoint: this.$('#setting-agent-langsmith-endpoint')?.value
+            };
+
             // 合并到当前配置
             let newConfig = {
                 ...this.currentConfig,
@@ -1209,6 +1283,10 @@ export class SettingsPage extends PageController {
                 logging: {
                     ...this.currentConfig.logging,
                     ...loggingSettings
+                },
+                agent: {
+                    ...(this.currentConfig.agent || {}),
+                    ...agentSettings
                 }
             };
 

@@ -200,12 +200,12 @@ python -m tools.chat_exporter.cli --db-dir "E:\decrypted_wechat\wxid_xxx\Msg" --
 - `--contact`：联系人昵称、备注或 wxid，可重复传
 - `--db-version`：微信数据库版本，默认是 `4`
 - `--include-chatrooms`：包含群聊
-- `--output-dir`：导出目录，默认 `chat_exports`
+- `--output-dir`：导出目录，默认 `data/chat_exports`
 
 导出成功后，通常会生成：
 
 ```text
-chat_exports/聊天记录/张三(wxid_xxx)/张三.csv
+data/chat_exports/聊天记录/张三(wxid_xxx)/张三.csv
 ```
 
 ---
@@ -229,7 +229,7 @@ python -m tools.prompt_gen.generator
 - `export_rag_enabled`
 - `export_rag_auto_ingest`
 
-程序会自动扫描 `chat_exports/聊天记录`，把你本人过往对这个联系人的表达做成本地风格索引。  
+程序会自动扫描 `data/chat_exports/聊天记录`，把你本人过往对这个联系人的表达做成本地风格索引。  
 后续对话时，就会优先参考这些真实历史表达，让回复更像你本人。
 
 ---
@@ -303,7 +303,7 @@ python -m tools.prompt_gen.generator
 
 1. 只处理你自己的数据。
 2. 解密结果只保存在本地。
-3. 不把 CSV、数据库、`chat_exports` 提交到 Git。
+3. 不把 CSV、数据库、`data/chat_exports` 提交到 Git。
 4. 不把原始聊天记录随手发给别人帮你排查问题。
 
 另外，和微信数据库提取相关的开源工具经常会因为合规风险变动。  

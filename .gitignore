@@ -2,8 +2,12 @@
 data/api_keys.py
 data/*.db
 data/*.db-*
+data/chat_exports/
 data/chat_history.jsonl
 data/config_override.json
+data/bot_state.json
+data/vector_db/
+data/logs/
 chat_exports/
 
 # Python
@@ -23,6 +27,7 @@ env/
 
 # 运行时日志
 wxauto_logs/
+logs/
 *.log
 
 # Node.js

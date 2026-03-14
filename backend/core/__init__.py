@@ -7,6 +7,7 @@
     - emotion: 情感检测功能
 """
 
+from .agent_runtime import AgentRuntime
 from .ai_client import AIClient
 from .memory import MemoryManager
 from .emotion import (
@@ -29,6 +30,7 @@ from .emotion import (
 
 __all__ = [
     # AI 客户端
+    "AgentRuntime",
     "AIClient",
     # 记忆管理
     "MemoryManager",

@@ -9,8 +9,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import sqlite3
+import threading
 import time
 import json
 import os
@@ -43,7 +45,7 @@ class BotState:
         self._state_file = os.path.join("data", "bot_state.json")
 
     def save(self) -> None:
-        """保存状态到文件"""
+        """同步保存状态到文件（供启动/关闭等非异步场景使用）"""
         try:
             os.makedirs("data", exist_ok=True)
             data = asdict(self)
@@ -55,6 +57,10 @@ class BotState:
                 json.dump(data, f, ensure_ascii=False, indent=2)
         except Exception as e:
             logging.error(f"保存状态失败: {e}")
+
+    async def async_save(self) -> None:
+        """异步保存状态到文件（在事件循环中调用，通过线程池执行以避免阻塞）"""
+        await asyncio.to_thread(self.save)
 
     def load(self) -> None:
         """从文件加载状态"""
@@ -92,13 +98,18 @@ class BotState:
             self.save()  # 保存新日期
     
     def add_reply(self, tokens: int = 0) -> None:
-        """记录一次回复"""
+        """记录一次回复，并异步持久化状态（不阻塞事件循环）"""
         self.reset_daily_stats()
         self.total_replies += 1
         self.today_replies += 1
         self.today_tokens += tokens
         self.total_tokens += tokens
-        self.save()  # 保存更新
+        # 优先使用非阻塞异步保存；若在事件循环外则回退到同步保存
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self.async_save())
+        except RuntimeError:
+            self.save()
     
     def get_uptime_str(self) -> str:
         """获取运行时长字符串"""
@@ -358,7 +369,7 @@ def should_respond(bot_cfg: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
 class UsageTracker:
     """Token 用量追踪器"""
     
-    def __init__(self, db_path: str = "usage_history.db"):
+    def __init__(self, db_path: str = "data/usage_history.db"):
         self.db_path = db_path
         self._lock = threading.RLock()
         self._conn = sqlite3.connect(self.db_path, check_same_thread=False)
@@ -477,7 +488,7 @@ class UsageTracker:
 _usage_tracker: Optional[UsageTracker] = None
 
 
-def get_usage_tracker(db_path: str = "usage_history.db") -> UsageTracker:
+def get_usage_tracker(db_path: str = "data/usage_history.db") -> UsageTracker:
     """获取用量追踪器单例"""
     global _usage_tracker
     if _usage_tracker is None:

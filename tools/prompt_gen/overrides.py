@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 # 配置常量
 SUMMARY_FILE_NAME = "top10_prompts_summary.json"
-CHAT_EXPORTS_DIR = "chat_exports"
+CHAT_EXPORTS_DIR = os.path.join("data", "chat_exports")
 
 # 缓存变量
 _prompt_cache: Optional[Dict[str, str]] = None
@@ -31,7 +31,7 @@ _cache_mtime: float = 0.0
 def _get_summary_file_path() -> str:
     """获取 JSON 汇总文件的完整路径。"""
     # 假设 tools/prompt_gen/overrides.py
-    # chat_exports 在项目根目录
+    # data/chat_exports 在项目根目录
     project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     return os.path.join(
         project_root,

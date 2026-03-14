@@ -310,13 +310,20 @@ CONFIG = {
         "reply_quote_max_chars": 120,                 # 文本引用最大长度，0=不引用
         "reply_quote_timeout_sec": 5.0,               # 微信原生引用超时（增加以提高稳定性）
         "reply_quote_fallback_to_text": True,         # 原生引用失败时降级为文本引用
+        "transport_backend": "hook_wcferry",          # 主后端：hook_wcferry / compat_ui
+        "compat_ui_enabled": False,                   # 是否允许显式降级到 wxauto UI 模式
+        "silent_mode_required": False,                # 是否要求严格静默模式
+        "required_wechat_version": "",               # 可选版本门禁；支持精确值、前缀*、逗号分隔
+        "capability_strict": True,                    # 能力缺失时是否拒绝启动
 
         # ┌─── 语音处理 ───────────────────────────────────────────────────────┐
         "voice_to_text": True,                        # 启用语音转文字（微信内置功能）
         "voice_to_text_fail_reply": "",               # 转写失败时回复，留空=不回复
+        "voice_transcription_model": "gpt-4o-mini-transcribe", # OpenAI 兼容语音转写模型
+        "voice_transcription_timeout_sec": 30.0,      # 语音转写超时（秒）
 
         # ┌─── 记忆系统 ───────────────────────────────────────────────────────┐
-        "memory_db_path": "chat_history.db",          # SQLite 记忆库路径
+        "memory_db_path": "data/chat_memory.db",      # SQLite 记忆库路径
         "memory_context_limit": 12,                   # 每次注入的历史条数，0=禁用
         "memory_ttl_sec": None,                       # 记忆库过期时间（秒），None=不过期
         "memory_cleanup_interval_sec": 0.0,           # 记忆库清理间隔（秒）
@@ -398,7 +405,7 @@ CONFIG = {
         "profile_inject_in_prompt": True,             # 在 prompt 中注入用户画像
         "rag_enabled": False,                         # 启用运行期对话 RAG（历史运行消息）
         "export_rag_enabled": True,                   # 启用导出聊天记录 RAG
-        "export_rag_dir": "chat_exports/聊天记录",     # 导出聊天记录目录
+        "export_rag_dir": "data/chat_exports/聊天记录", # 导出聊天记录目录
         "export_rag_auto_ingest": True,               # 启动/热更新时自动增量导入
         "export_rag_max_chunks_per_chat": 500,        # 每个联系人最多保留的风格片段数
         "export_rag_chunk_messages": 6,               # 连续本人消息合并成一个 chunk 的最大条数
@@ -435,11 +442,30 @@ CONFIG = {
     # ─────────────────────────────────────────────────────────────────────────
     "logging": {
         "level": 'INFO',                              # 日志级别：DEBUG/INFO/WARNING/ERROR
-        "file": "wxauto_logs/bot.log",                # 日志文件路径，留空=仅控制台
+        "file": "data/logs/bot.log",                  # 日志文件路径，留空=仅控制台
         "max_bytes": 5 * 1024 * 1024,                 # 单个日志文件最大尺寸（5MB）
         "backup_count": 5,                            # 日志轮转保留数量
         "log_message_content": False,                 # 是否记录用户消息内容
         "log_reply_content": False,                   # 是否记录 AI 回复内容
+    },
+    # ─────────────────────────────────────────────────────────────────────────
+    #                       LangChain / LangGraph 运行时
+    # ─────────────────────────────────────────────────────────────────────────
+    "agent": {
+        "enabled": True,                              # 启用 LangChain / LangGraph 主链路
+        "graph_mode": "state_graph",                  # 编排模式标记
+        "streaming_enabled": True,                    # 启用基于 LangChain 的流式输出
+        "langsmith_enabled": False,                   # 启用 LangSmith tracing
+        "langsmith_project": "wechat-chat",           # LangSmith 项目名
+        "langsmith_endpoint": "",                     # 私有 LangSmith Endpoint，留空使用默认
+        "langsmith_api_key": "",                      # LangSmith API Key，建议放 data/api_keys.py
+        "history_strategy": "sqlite_memory",          # 历史策略标记
+        "retriever_top_k": 3,                         # 运行期检索 top-k
+        "retriever_score_threshold": 1.0,             # 运行期检索距离阈值
+        "embedding_cache_ttl_sec": 300.0,            # Embedding 缓存 TTL（秒）
+        "background_fact_extraction_enabled": True,   # 事实提取后台执行
+        "emotion_fast_path_enabled": True,            # 优先走关键词情绪快速路径
+        "max_parallel_retrievers": 3,                 # 并行检索器上限
     },
 }
 

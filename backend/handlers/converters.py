@@ -84,6 +84,7 @@ def normalize_message_item(
     chat_name = str(chat_name).strip()
 
     timestamp = None
+    explicit_at_me = None
     if hasattr(item, "content") and hasattr(item, "type"):
         content = getattr(item, "content", "") or ""
         sender = (
@@ -93,6 +94,7 @@ def normalize_message_item(
         )
         msg_type = getattr(item, "type", None)
         attr = getattr(item, "attr", None)
+        explicit_at_me = getattr(item, "is_at_me", None)
         timestamp = (
             getattr(item, "timestamp", None)
             or getattr(item, "time", None)
@@ -121,6 +123,7 @@ def normalize_message_item(
         msg_type = item.get("type") or item.get("msg_type") or "text"
         is_group = is_group or bool(item.get("is_group") or item.get("group"))
         is_self = bool(item.get("is_self"))
+        explicit_at_me = item.get("is_at_me")
         timestamp = (
             item.get("timestamp")
             or item.get("time")
@@ -157,7 +160,10 @@ def normalize_message_item(
         except Exception:
             timestamp = None
 
-    at_me = is_group and is_at_me(content, self_name)
+    if explicit_at_me is None:
+        at_me = is_group and is_at_me(content, self_name)
+    else:
+        at_me = is_group and bool(explicit_at_me)
     if is_group:
         content = strip_at_text(content, self_name)
 

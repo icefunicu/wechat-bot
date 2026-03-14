@@ -8,14 +8,18 @@ import asyncio
 import importlib
 import json
 import logging
+from types import MethodType
 from typing import Any, Dict, Optional, Tuple, TYPE_CHECKING
 from ..core.ai_client import AIClient
+from ..core.agent_runtime import AgentRuntime
+from ..transports import TransportUnavailableError, WcferryWeChatClient
 from ..types import ReconnectPolicy
 from ..utils.common import as_int, as_float, as_optional_int, as_optional_str
 from ..utils.config import normalize_system_prompt, build_api_candidates, get_setting, is_placeholder_key
 
 __all__ = [
     "build_ai_client",
+    "build_agent_runtime",
     "select_ai_client",
     "select_specific_ai_client",
     "get_reconnect_policy",
@@ -85,9 +89,20 @@ def build_ai_client(settings: Dict[str, Any], bot_cfg: Dict[str, Any]) -> AIClie
     return client
 
 
+def build_agent_runtime(
+    settings: Dict[str, Any],
+    bot_cfg: Dict[str, Any],
+    agent_cfg: Optional[Dict[str, Any]] = None,
+) -> AgentRuntime:
+    """根据配置构建 LangChain/LangGraph 运行时。"""
+    return AgentRuntime(settings=settings, bot_cfg=bot_cfg, agent_cfg=agent_cfg)
+
+
 async def select_ai_client(
-    api_cfg: Dict[str, Any], bot_cfg: Dict[str, Any]
-) -> Tuple[Optional[AIClient], Optional[str]]:
+    api_cfg: Dict[str, Any],
+    bot_cfg: Dict[str, Any],
+    agent_cfg: Optional[Dict[str, Any]] = None,
+) -> Tuple[Optional[Any], Optional[str]]:
     """
     探测并选择可用的 AI 客户端预设。
     
@@ -127,7 +142,12 @@ async def select_ai_client(
         if "embedding_model" not in settings:
              settings["embedding_model"] = str(api_cfg.get("embedding_model") or "")
 
-        client = build_ai_client(settings, bot_cfg)
+        runtime_enabled = True if agent_cfg is None else bool(agent_cfg.get("enabled", True))
+        client = (
+            build_agent_runtime(settings, bot_cfg, agent_cfg)
+            if runtime_enabled
+            else build_ai_client(settings, bot_cfg)
+        )
         logging.info("正在探测预设：%s", name)
         if await client.probe():
             logging.info("已选择预设：%s", name)
@@ -139,8 +159,11 @@ async def select_ai_client(
 
 
 async def select_specific_ai_client(
-    api_cfg: Dict[str, Any], bot_cfg: Dict[str, Any], preset_name: str
-) -> Tuple[Optional[AIClient], Optional[str]]:
+    api_cfg: Dict[str, Any],
+    bot_cfg: Dict[str, Any],
+    preset_name: str,
+    agent_cfg: Optional[Dict[str, Any]] = None,
+) -> Tuple[Optional[Any], Optional[str]]:
     """
     严格选择指定预设，不做自动回退。
     """
@@ -178,7 +201,12 @@ async def select_specific_ai_client(
     if "embedding_model" not in settings:
         settings["embedding_model"] = str(api_cfg.get("embedding_model") or "")
 
-    client = build_ai_client(settings, bot_cfg)
+    runtime_enabled = True if agent_cfg is None else bool(agent_cfg.get("enabled", True))
+    client = (
+        build_agent_runtime(settings, bot_cfg, agent_cfg)
+        if runtime_enabled
+        else build_ai_client(settings, bot_cfg)
+    )
     logging.info("正在严格探测指定预设：%s", wanted)
     if await client.probe():
         logging.info("已选择指定预设：%s", wanted)
@@ -204,7 +232,33 @@ def get_reconnect_policy(bot_cfg: Dict[str, Any]) -> ReconnectPolicy:
     )
 
 
-async def reconnect_wechat(reason: str, policy: ReconnectPolicy) -> Optional["WeChat"]:
+def patch_wechat_polling_client(wx: "WeChat", is_red_pixel: Any) -> "WeChat":
+    """Avoid forcing the WeChat window to foreground during passive polling."""
+    if getattr(wx, "_codex_background_poll_patch", False):
+        return wx
+
+    original_check_new_message = wx.CheckNewMessage
+
+    def check_new_message_without_foreground(self) -> bool:
+        try:
+            return is_red_pixel(self.A_ChatIcon)
+        except Exception as exc:
+            logging.debug("后台检测新消息失败，回退到 wxauto 原始实现: %s", exc)
+            return original_check_new_message()
+
+    wx.CheckNewMessage = MethodType(check_new_message_without_foreground, wx)
+    wx._codex_background_poll_patch = True
+    logging.info("已禁用轮询新消息时自动拉起微信前台。")
+    return wx
+
+
+async def reconnect_wechat(
+    reason: str,
+    policy: ReconnectPolicy,
+    *,
+    bot_cfg: Optional[Dict[str, Any]] = None,
+    ai_client: Optional[Any] = None,
+) -> Optional[Any]:
     """
     尝试重连微信客户端。
     
@@ -215,15 +269,45 @@ async def reconnect_wechat(reason: str, policy: ReconnectPolicy) -> Optional["We
     Returns:
         WeChat: 成功返回实例，失败返回 None
     """
-    try:
-        from wxauto import WeChat
-    except ImportError:
-        return None
+    if bot_cfg is None:
+        try:
+            from backend.config import CONFIG
+            bot_cfg = CONFIG.get("bot", {})
+        except Exception:
+            bot_cfg = {}
+    bot_cfg = dict(bot_cfg or {})
+    preferred_backend = str(bot_cfg.get("transport_backend") or "hook_wcferry").strip().lower()
+    allow_compat = bool(bot_cfg.get("compat_ui_enabled", False))
+
+    def _build_compat_client() -> Optional[Any]:
+        try:
+            from wxauto import WeChat
+            from wxauto.utils import IsRedPixel
+        except ImportError:
+            return None
+        return patch_wechat_polling_client(WeChat(), IsRedPixel)
 
     logging.warning("准备重连微信：%s", reason)
+    if preferred_backend == "hook_wcferry":
+        try:
+            client = WcferryWeChatClient(bot_cfg, ai_client=ai_client)
+            logging.info("Hook transport initialized: %s", client.backend_name)
+            return client
+        except TransportUnavailableError as exc:
+            logging.error("Hook transport unavailable: %s", exc)
+            if not allow_compat:
+                return None
+            logging.warning("Falling back to compat_ui backend")
+        except Exception as exc:
+            logging.exception("Hook transport failed: %s", exc)
+            if not allow_compat:
+                return None
+
     for attempt in range(policy.max_retries + 1):
         try:
-            wx = WeChat()
+            wx = _build_compat_client()
+            if wx is None:
+                return None
             logging.info("微信重连成功。")
             return wx
         except Exception as exc:

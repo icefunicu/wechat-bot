@@ -11,6 +11,7 @@ export class DashboardPage extends PageController {
     constructor() {
         super('DashboardPage', 'page-dashboard');
         this._lastStats = null;
+        this._recentMessages = [];
     }
 
     async onInit() {
@@ -20,6 +21,11 @@ export class DashboardPage extends PageController {
 
     async onEnter() {
         await super.onEnter();
+        this._updateBotUI();
+        const status = this.getState('bot.status');
+        if (status) {
+            this.updateStats(status);
+        }
         await this._loadRecentMessages();
     }
 
@@ -75,6 +81,7 @@ export class DashboardPage extends PageController {
 
         // 监听状态变化
         this.watchState('bot.*', () => this._updateBotUI());
+        this.listenEvent(Events.MESSAGE_RECEIVED, (message) => this._appendRecentMessage(message));
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -199,16 +206,34 @@ export class DashboardPage extends PageController {
 
     async _loadRecentMessages() {
         try {
-            const result = await apiService.getMessages();
+            const result = await apiService.getMessages({ limit: 5, offset: 0 });
             const container = this.$('#recent-messages');
 
             if (result.success && result.messages && container) {
-                const messages = result.messages.slice(-5);
-                this._renderMessages(container, messages);
+                this._recentMessages = [...result.messages].reverse();
+                this._renderMessages(container, this._recentMessages);
             }
         } catch (error) {
             console.error('[DashboardPage] 加载最近消息失败:', error);
         }
+    }
+
+    _appendRecentMessage(message) {
+        if (!message) {
+            return;
+        }
+        const container = this.$('#recent-messages');
+        if (!container) {
+            return;
+        }
+        const normalized = {
+            sender: message.sender,
+            content: message.content,
+            timestamp: message.timestamp,
+            is_self: message.direction === 'outgoing'
+        };
+        this._recentMessages = [...this._recentMessages, normalized].slice(-5);
+        this._renderMessages(container, this._recentMessages);
     }
 
     _renderMessages(container, messages) {
@@ -277,12 +302,19 @@ export class DashboardPage extends PageController {
             uptime: stats.uptime || '--',
             today_replies: stats.today_replies ?? 0,
             today_tokens: stats.today_tokens ?? 0,
-            total_replies: stats.total_replies ?? 0
+            total_replies: stats.total_replies ?? 0,
+            transport_backend: stats.transport_backend || 'compat_ui',
+            wechat_version: stats.wechat_version || '--',
+            compat_mode: !!stats.compat_mode,
+            transport_warning: stats.transport_warning || ''
         };
         const uptimeElem = this.$('#stat-uptime');
         const todayRepliesElem = this.$('#stat-today-replies');
         const todayTokensElem = this.$('#stat-today-tokens');
         const totalRepliesElem = this.$('#stat-total-replies');
+        const transportBackendElem = this.$('#bot-transport-backend');
+        const transportVersionElem = this.$('#bot-transport-version');
+        const transportWarningElem = this.$('#bot-transport-warning');
 
         if (!this._lastStats || this._lastStats.uptime !== nextStats.uptime) {
             if (uptimeElem) uptimeElem.textContent = nextStats.uptime;
@@ -295,6 +327,21 @@ export class DashboardPage extends PageController {
         }
         if (!this._lastStats || this._lastStats.total_replies !== nextStats.total_replies) {
             if (totalRepliesElem) totalRepliesElem.textContent = this._formatNumber(nextStats.total_replies);
+        }
+        if (!this._lastStats || this._lastStats.transport_backend !== nextStats.transport_backend || this._lastStats.compat_mode !== nextStats.compat_mode) {
+            if (transportBackendElem) {
+                const modeText = nextStats.compat_mode ? '兼容模式' : '静默模式';
+                transportBackendElem.textContent = `后端: ${nextStats.transport_backend} (${modeText})`;
+            }
+        }
+        if (!this._lastStats || this._lastStats.wechat_version !== nextStats.wechat_version) {
+            if (transportVersionElem) transportVersionElem.textContent = `微信: ${nextStats.wechat_version}`;
+        }
+        if (!this._lastStats || this._lastStats.transport_warning !== nextStats.transport_warning) {
+            if (transportWarningElem) {
+                transportWarningElem.hidden = !nextStats.transport_warning;
+                transportWarningElem.textContent = nextStats.transport_warning || '';
+            }
         }
 
         this._lastStats = nextStats;

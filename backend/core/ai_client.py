@@ -40,8 +40,7 @@ from tenacity import AsyncRetrying, stop_after_attempt, wait_exponential, retry_
 #                               常量定义
 # ═══════════════════════════════════════════════════════════════════════════════
 
-DEFAULT_TIMEOUT_SEC = 10.0  # 默认超时时间（秒）
-MAX_TIMEOUT_SEC = 10.0      # 最大允许超时时间（秒）
+DEFAULT_TIMEOUT_SEC = 60.0  # 默认超时时间（秒）；本地模型/推理模型可能需要更长时间
 MAX_RETRIES = 2             # 最大重试次数
 
 # 共享的 HTTP 客户端实例（连接池复用）
@@ -84,14 +83,18 @@ def _get_shared_client() -> httpx.AsyncClient:
 
 
 def _coerce_timeout(value: float) -> float:
-    """将超时值规范化到有效范围内。"""
+    """将超时值规范化到有效范围内。
+
+    不设上限，允许本地大模型（Ollama）及推理模型（DeepSeek-R1）
+    配置较长的超时时间。
+    """
     try:
         val = float(value)
     except (TypeError, ValueError):
         val = DEFAULT_TIMEOUT_SEC
     if val <= 0:
         val = DEFAULT_TIMEOUT_SEC
-    return min(val, MAX_TIMEOUT_SEC)
+    return val
 
 
 def _coerce_retries(value: int) -> int:

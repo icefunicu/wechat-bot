@@ -50,10 +50,19 @@ class BotConfig(BaseModel):
     reply_quote_max_chars: int = 120
     reply_quote_timeout_sec: float = 5.0
     reply_quote_fallback_to_text: bool = True
+
+    # Transport
+    transport_backend: Literal['hook_wcferry', 'compat_ui'] = 'hook_wcferry'
+    compat_ui_enabled: bool = False
+    silent_mode_required: bool = False
+    required_wechat_version: str = ""
+    capability_strict: bool = True
     
     # Voice
     voice_to_text: bool = True
     voice_to_text_fail_reply: str = ""
+    voice_transcription_model: str = "gpt-4o-mini-transcribe"
+    voice_transcription_timeout_sec: float = 30.0
     
     # Memory
     memory_db_path: str = "data/chat_memory.db"
@@ -141,7 +150,7 @@ class BotConfig(BaseModel):
     profile_inject_in_prompt: bool = True
     rag_enabled: bool = False
     export_rag_enabled: bool = True
-    export_rag_dir: str = "chat_exports/聊天记录"
+    export_rag_dir: str = "data/chat_exports/聊天记录"
     export_rag_auto_ingest: bool = True
     export_rag_max_chunks_per_chat: int = 500
     export_rag_chunk_messages: int = 6
@@ -175,14 +184,31 @@ class BotConfig(BaseModel):
 
 class LoggingConfig(BaseModel):
     level: str = "INFO"
-    file: str = "wxauto_logs/bot.log"
+    file: str = "data/logs/bot.log"
     max_bytes: int = 10 * 1024 * 1024
     backup_count: int = 5
     format: Literal['text', 'json'] = 'text'
     log_message_content: bool = False
     log_reply_content: bool = False
 
+class AgentConfig(BaseModel):
+    enabled: bool = True
+    graph_mode: str = "state_graph"
+    streaming_enabled: bool = True
+    langsmith_enabled: bool = False
+    langsmith_project: str = "wechat-chat"
+    langsmith_endpoint: Optional[str] = None
+    langsmith_api_key: Optional[str] = None
+    history_strategy: str = "sqlite_memory"
+    retriever_top_k: int = 3
+    retriever_score_threshold: float = 1.0
+    embedding_cache_ttl_sec: float = 300.0
+    background_fact_extraction_enabled: bool = True
+    emotion_fast_path_enabled: bool = True
+    max_parallel_retrievers: int = 3
+
 class AppConfig(BaseModel):
     api: ApiConfig
     bot: BotConfig
     logging: LoggingConfig
+    agent: AgentConfig = Field(default_factory=AgentConfig)

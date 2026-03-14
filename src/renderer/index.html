@@ -288,6 +288,11 @@
                                         <span class="bot-state-dot offline"></span>
                                         <span class="bot-state-text">离线</span>
                                     </div>
+                                    <div class="bot-meta" id="bot-transport-meta">
+                                        <span id="bot-transport-backend">后端: --</span>
+                                        <span id="bot-transport-version">微信: --</span>
+                                    </div>
+                                    <div class="bot-warning" id="bot-transport-warning" hidden></div>
                                 </div>
                             </div>
                             <div class="bot-actions">
@@ -376,6 +381,9 @@
                             </svg>
                             <input type="text" class="search-input" placeholder="搜索消息..." id="message-search">
                         </div>
+                        <select id="message-chat-filter" class="message-chat-filter">
+                            <option value="">全部会话</option>
+                        </select>
                         <button class="btn btn-secondary btn-sm" id="btn-refresh-messages">
                             <svg class="icon icon-sm">
                                 <use href="#icon-refresh" />
@@ -385,11 +393,21 @@
                     </div>
                 </div>
 
+                <div class="message-toolbar-meta">
+                    <span id="message-filter-summary">全部消息</span>
+                    <span id="message-total-count">0/0 条</span>
+                </div>
+
                 <div class="message-list full-height" id="all-messages">
                     <div class="loading-state">
                         <div class="spinner"></div>
                         <span>加载中...</span>
                     </div>
+                </div>
+                <div class="message-footer-actions">
+                    <button class="btn btn-secondary btn-sm" id="btn-load-more-messages" hidden>
+                        <span>加载更多</span>
+                    </button>
                 </div>
             </section>
 
@@ -967,6 +985,78 @@
                                     <input type="checkbox" id="setting-emotion-log-enabled">
                                     <span class="form-checkbox-label">记录情绪日志</span>
                                 </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-card">
+                        <h2 class="settings-card-title">LangChain Runtime</h2>
+                        <div class="settings-grid">
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-agent-enabled">
+                                    <span class="form-checkbox-label">启用 LangGraph 主链路</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-agent-streaming-enabled">
+                                    <span class="form-checkbox-label">启用 LangChain 流式输出</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">图模式</label>
+                                <input type="text" id="setting-agent-graph-mode" placeholder="state_graph">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">历史策略</label>
+                                <input type="text" id="setting-agent-history-strategy" placeholder="sqlite_memory">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Retriever Top-K</label>
+                                <input type="number" id="setting-agent-retriever-top-k" min="1" step="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">检索阈值</label>
+                                <input type="number" id="setting-agent-retriever-threshold" min="0" step="0.01">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Embedding 缓存 TTL(秒)</label>
+                                <input type="number" id="setting-agent-embedding-cache-ttl" min="0" step="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">最大并行检索器</label>
+                                <input type="number" id="setting-agent-max-parallel-retrievers" min="1" step="1">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-agent-background-facts">
+                                    <span class="form-checkbox-label">后台事实提取</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-agent-emotion-fast-path">
+                                    <span class="form-checkbox-label">情绪快速路径</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-checkbox" style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                    <input type="checkbox" id="setting-agent-langsmith-enabled">
+                                    <span class="form-checkbox-label">启用 LangSmith tracing</span>
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">LangSmith 项目名</label>
+                                <input type="text" id="setting-agent-langsmith-project" placeholder="wechat-chat">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">LangSmith Endpoint</label>
+                                <input type="text" id="setting-agent-langsmith-endpoint" placeholder="https://api.smith.langchain.com">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">LangSmith Key 状态</label>
+                                <input type="text" id="setting-agent-langsmith-key-status" disabled placeholder="未配置">
                             </div>
                         </div>
                     </div>

@@ -3,42 +3,31 @@ import logging
 import os
 import random
 import time
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set
 
-from .core.ai_client import AIClient
 from .core.export_rag import ExportChatRAG
 from .core.memory import MemoryManager
-from .core.vector_memory import VectorMemory # 新增
-from .core.emotion import (
-    EmotionResult,
-    detect_emotion_keywords,
-    get_emotion_analysis_prompt,
-    parse_emotion_ai_response,
-    get_fact_extraction_prompt,
-    parse_fact_extraction_response,
-    get_relationship_evolution_hint,
-)
+from .core.vector_memory import VectorMemory
 from .core.bot_control import (
     parse_control_command,
     is_command_message,
     should_respond,
+    get_bot_state,
 )
 from .core.factory import (
     select_ai_client,
     select_specific_ai_client,
     get_reconnect_policy,
     reconnect_wechat,
-    apply_ai_runtime_settings,
     compute_api_signature,
-    reload_ai_module,
 )
 
-from .types import MessageEvent, ReconnectPolicy
+from .types import MessageEvent
 from .handlers.filter import should_reply
 from .handlers.sender import send_message, send_reply_chunks
 from .handlers.converters import normalize_new_messages
 from .utils.common import as_float, as_int, get_file_mtime, iter_items
-from .utils.config import load_config, get_model_alias, resolve_system_prompt
+from .utils.config import load_config, get_model_alias
 from .utils.logging import (
     setup_logging,
     get_logging_settings,
@@ -47,13 +36,12 @@ from .utils.logging import (
 )
 from .utils.message import (
     is_voice_message,
+    is_image_message,
     build_reply_suffix,
     refine_reply_text,
     sanitize_reply_text,
     split_reply_naturally,
-    STREAM_PUNCTUATION,
 )
-from .utils.config import get_model_alias
 from .utils.tools import transcribe_voice_message, estimate_exchange_tokens
 from .utils.ipc import IPCManager
 
@@ -66,9 +54,11 @@ class WeChatBot:
         self.config: Dict[str, Any] = {}
         self.bot_cfg: Dict[str, Any] = {}
         self.api_cfg: Dict[str, Any] = {}
-        self.ai_client: Optional[AIClient] = None
+        self.agent_cfg: Dict[str, Any] = {}
+        self.ai_client: Optional[Any] = None
+        self.wx: Optional[Any] = None
         self.memory: Optional[MemoryManager] = memory_manager
-        self.vector_memory: Optional[VectorMemory] = None # 向量记忆
+        self.vector_memory: Optional[VectorMemory] = None
         self.export_rag: Optional[ExportChatRAG] = None
         self.export_rag_sync_task: Optional[asyncio.Task] = None
         self.wx_lock = asyncio.Lock()
@@ -78,6 +68,7 @@ class WeChatBot:
 
         self.last_reply_ts: Dict[str, float] = {"ts": 0.0}
         self.pending_tasks: Set[asyncio.Task] = set()
+        self.chat_locks: Dict[str, asyncio.Lock] = {}
         
         # 合并消息状态
         self.pending_merge_messages: Dict[str, List[str]] = {}
@@ -100,6 +91,7 @@ class WeChatBot:
         # 停止事件（由 BotManager 注入或自行创建）
         self._stop_event: Optional[asyncio.Event] = None
         self._is_paused: bool = False
+        self._wx_supports_filter_mute: Optional[bool] = None
 
         # 缓存的过滤配置
         self.ignore_names_set: Set[str] = set()
@@ -123,9 +115,13 @@ class WeChatBot:
         self._ensure_vector_memory()
         
         # 初始化 AI 客户端
-        self.ai_client, preset_name = await select_ai_client(self.api_cfg, self.bot_cfg)
+        self.ai_client, preset_name = await select_ai_client(
+            self.api_cfg, self.bot_cfg, self.agent_cfg
+        )
         if self.ai_client:
-            self.api_signature = compute_api_signature(self.api_cfg)
+            self.api_signature = compute_api_signature(
+                {"api": self.api_cfg, "agent": self.agent_cfg}
+            )
             self.runtime_preset_name = preset_name or ""
             logging.info("AI 客户端初始化成功，使用预设: %s", preset_name)
             await self._schedule_export_rag_sync(force=False)
@@ -134,7 +130,14 @@ class WeChatBot:
 
         # 初始化微信客户端
         reconnect_policy = get_reconnect_policy(self.bot_cfg)
-        self.wx = await reconnect_wechat("初始化", reconnect_policy)
+        self.wx = await reconnect_wechat(
+            "初始化",
+            reconnect_policy,
+            bot_cfg=self.bot_cfg,
+            ai_client=self.ai_client,
+        )
+        if self.wx is not None and hasattr(self.wx, "ai_client"):
+            self.wx.ai_client = self.ai_client
         if self.wx is None:
             logging.error("微信初始化失败")
             return None
@@ -144,6 +147,7 @@ class WeChatBot:
     def _apply_config(self) -> None:
         self.bot_cfg = self.config.get("bot", {})
         self.api_cfg = self.config.get("api", {})
+        self.agent_cfg = self.config.get("agent", {})
         
         level, log_file, max_bytes, backup_count, format_type = get_logging_settings(self.config)
         setup_logging(level, log_file, max_bytes, backup_count, format_type)
@@ -239,7 +243,14 @@ class WeChatBot:
                 keepalive_idle_sec = as_float(self.bot_cfg.get("keepalive_idle_sec", 0.0), 0.0)
                 if keepalive_idle_sec > 0 and (now - last_poll_ok_ts > keepalive_idle_sec):
                     reconnect_policy = get_reconnect_policy(self.bot_cfg)
-                    wx = await reconnect_wechat("keepalive 超时", reconnect_policy)
+                    wx = await reconnect_wechat(
+                        "keepalive 超时",
+                        reconnect_policy,
+                        bot_cfg=self.bot_cfg,
+                        ai_client=self.ai_client,
+                    )
+                    if wx is not None and hasattr(wx, "ai_client"):
+                        wx.ai_client = self.ai_client
                     if wx is None:
                         await asyncio.sleep(reconnect_policy.base_delay_sec)
                         continue
@@ -247,16 +258,35 @@ class WeChatBot:
 
                 # 轮询消息
                 try:
+                    filter_mute = bool(self.bot_cfg.get("filter_mute", False))
                     async with self.wx_lock:
-                        raw = await asyncio.to_thread(
-                            wx.GetNextNewMessage,
-                            filter_mute=bool(self.bot_cfg.get("filter_mute", False)),
-                        )
+                        if filter_mute and self._wx_supports_filter_mute is not False:
+                            try:
+                                raw = await asyncio.to_thread(
+                                    wx.GetNextNewMessage,
+                                    filter_mute=True,
+                                )
+                                self._wx_supports_filter_mute = True
+                            except TypeError as exc:
+                                if "filter_mute" not in str(exc):
+                                    raise
+                                self._wx_supports_filter_mute = False
+                                logging.warning("当前 wxauto 版本不支持 filter_mute，已回退为无参轮询。")
+                                raw = await asyncio.to_thread(wx.GetNextNewMessage)
+                        else:
+                            raw = await asyncio.to_thread(wx.GetNextNewMessage)
                     last_poll_ok_ts = time.time()
                 except Exception as exc:
                     logging.exception("获取消息异常：%s", exc)
                     reconnect_policy = get_reconnect_policy(self.bot_cfg)
-                    wx = await reconnect_wechat("GetNextNewMessage 异常", reconnect_policy)
+                    wx = await reconnect_wechat(
+                        "GetNextNewMessage 异常",
+                        reconnect_policy,
+                        bot_cfg=self.bot_cfg,
+                        ai_client=self.ai_client,
+                    )
+                    if wx is not None and hasattr(wx, "ai_client"):
+                        wx.ai_client = self.ai_client
                     if wx is None:
                         await asyncio.sleep(reconnect_policy.base_delay_sec)
                     poll_interval = min(poll_interval_max, poll_interval * poll_backoff)
@@ -357,9 +387,13 @@ class WeChatBot:
             
             # 重新检查 AI 客户端
             if self.bot_cfg.get("reload_ai_client_on_change", True):
-                new_signature = compute_api_signature(self.api_cfg)
+                new_signature = compute_api_signature(
+                    {"api": self.api_cfg, "agent": self.agent_cfg}
+                )
                 if new_signature != self.api_signature:
-                    new_client, new_preset = await select_ai_client(self.api_cfg, self.bot_cfg)
+                    new_client, new_preset = await select_ai_client(
+                        self.api_cfg, self.bot_cfg, self.agent_cfg
+                    )
                     if new_client:
                         if self.ai_client and hasattr(self.ai_client, "close"):
                             await self.ai_client.close()
@@ -387,7 +421,9 @@ class WeChatBot:
 
         self._apply_config()
         self._ensure_vector_memory()
-        new_signature = compute_api_signature(self.api_cfg)
+        new_signature = compute_api_signature(
+            {"api": self.api_cfg, "agent": self.agent_cfg}
+        )
         need_reload_client = force_ai_reload or new_signature != self.api_signature
 
         if not need_reload_client:
@@ -408,10 +444,12 @@ class WeChatBot:
         active_preset = str(self.api_cfg.get("active_preset") or "").strip()
         if strict_active_preset and active_preset:
             new_client, new_preset = await select_specific_ai_client(
-                self.api_cfg, self.bot_cfg, active_preset
+                self.api_cfg, self.bot_cfg, active_preset, self.agent_cfg
             )
         else:
-            new_client, new_preset = await select_ai_client(self.api_cfg, self.bot_cfg)
+            new_client, new_preset = await select_ai_client(
+                self.api_cfg, self.bot_cfg, self.agent_cfg
+            )
 
         if not new_client:
             return {
@@ -463,10 +501,12 @@ class WeChatBot:
                 )
             elif reason and reason not in {"disabled", ""}:
                 logging.info("导出语料 RAG 未执行: %s", reason)
+            asyncio.create_task(self.bot_manager.notify_status_change())
         except asyncio.CancelledError:
             raise
         except Exception as exc:
             logging.warning("导出语料 RAG 同步失败: %s", exc)
+            asyncio.create_task(self.bot_manager.notify_status_change())
 
     def get_export_rag_status(self) -> Dict[str, Any]:
         if not self.export_rag:
@@ -480,6 +520,18 @@ class WeChatBot:
                 "last_scan_summary": {},
             }
         return self.export_rag.get_status()
+
+    def get_agent_status(self) -> Dict[str, Any]:
+        if self.ai_client and hasattr(self.ai_client, "get_status"):
+            return self.ai_client.get_status()
+        return {
+            "engine": "legacy",
+            "graph_mode": "disabled",
+            "langsmith_enabled": False,
+            "retriever_stats": {},
+            "cache_stats": {},
+            "runtime_timings": {},
+        }
 
     async def schedule_merged_reply(self, wx: "WeChat", event: MessageEvent) -> None:
         if is_voice_message(event.msg_type):
@@ -570,7 +622,7 @@ class WeChatBot:
 
                 # 如果是图片消息，content 包含 [图片] 标记
                 image_path = None
-                if event.msg_type == 1 and "[图片]" in event.content:
+                if is_image_message(event.msg_type) and "[图片]" in event.content:
                     try:
                         save_dir = os.path.join(os.getcwd(), "temp_images")
                         os.makedirs(save_dir, exist_ok=True)
@@ -590,6 +642,8 @@ class WeChatBot:
                 # 广播事件
                 asyncio.create_task(self.bot_manager.broadcast_event("message", {
                     "direction": "incoming",
+                    "chat_id": f"group:{event.chat_name}" if event.is_group else f"friend:{event.chat_name}",
+                    "chat_name": event.chat_name,
                     "sender": event.sender,
                     "content": event.content,
                     "recipient": recipient,
@@ -659,6 +713,12 @@ class WeChatBot:
         )
         
         if result and result.should_reply:
+            if result.command in ("pause", "resume"):
+                await self.bot_manager.apply_pause_state(
+                    result.command == "pause",
+                    reason=(" ".join(result.args) or "手动暂停") if result.command == "pause" else "",
+                    propagate_to_bot=False,
+                )
             if self.bot_cfg.get("control_reply_visible", True):
                 async with self.wx_lock:
                     await asyncio.to_thread(
@@ -677,248 +737,207 @@ class WeChatBot:
         image_path: Optional[str] = None
     ) -> None:
         chat_id = f"group:{event.chat_name}" if event.is_group else f"friend:{event.chat_name}"
-        
-        # 记忆与上下文
-        memory_context = []
-        user_profile = None
-        
-        if self.memory:
-            await self.memory.add_message(chat_id, "user", user_text)
-            
-            if self.bot_cfg.get("personalization_enabled", False):
-                user_profile = await self.memory.get_user_profile(chat_id)
-                await self.memory.increment_message_count(chat_id)
-
-            limit = as_int(self.bot_cfg.get("memory_context_limit", 5), 5)
-            if limit > 0:
-                memory_context = await self.memory.get_recent_context(chat_id, limit)
-
-            if self.export_rag and self.ai_client:
-                export_results = await self.export_rag.search(
-                    self.ai_client,
-                    chat_id,
-                    user_text,
-                )
-                export_message = self.export_rag.build_memory_message(export_results)
-                if export_message:
-                    memory_context.insert(0, export_message)
-
-            # RAG 检索
-            if self.vector_memory and self.ai_client:
-                # 只有当用户输入较长或看起来像问题时才检索，节省开销
-                if len(user_text) > 5 or "?" in user_text or "？" in user_text:
-                    embedding = await self.ai_client.get_embedding(user_text)
-                    results = await asyncio.to_thread(
-                        self.vector_memory.search,
-                        query=user_text if not embedding else None,
-                        n_results=3,
-                        filter_meta={"chat_id": chat_id, "source": "runtime_chat"},
-                        query_embedding=embedding
-                    )
-                    if results:
-                        rag_context = "\n".join([r['text'] for r in results])
-                        logging.info(f"RAG 命中 [{chat_id}]: {len(results)} 条")
-                        # 将 RAG 结果作为 System Message 注入
-                        memory_context.insert(0, {
-                            "role": "system",
-                            "content": f"Relevant past memories:\n{rag_context}"
-                        })
-
-        # 情感分析
-        current_emotion = None
-        if self.bot_cfg.get("emotion_detection_enabled", False):
-            current_emotion = await self._analyze_emotion(chat_id, user_text)
-            if self.memory and current_emotion:
-                await self.memory.update_emotion(chat_id, current_emotion.emotion)
-
-        # 系统提示词
-        system_prompt = resolve_system_prompt(
-            event, self.bot_cfg, user_profile, current_emotion, memory_context
-        )
-        
-        # 生成回复
         if not self.ai_client:
             return
 
-        reply_text = await self.ai_client.generate_reply(
-            chat_id, user_text, system_prompt, memory_context, image_path=image_path
-        )
-        
+        async with self._get_chat_lock(chat_id):
+            prepared = await self.ai_client.prepare_request(
+                event=event,
+                chat_id=chat_id,
+                user_text=user_text,
+                dependencies=self._runtime_dependencies(),
+                image_path=image_path,
+            )
+
+            reply_text = ""
+            should_stream = bool(self.bot_cfg.get("stream_reply", False)) and bool(
+                self.agent_cfg.get("streaming_enabled", True)
+            )
+            if should_stream:
+                reply_text = await self._stream_smart_reply(wx, event, prepared)
+            else:
+                reply_text = await self.ai_client.invoke(prepared)
+                if reply_text:
+                    await self._send_smart_reply(wx, event, reply_text)
+
         try:
             if not reply_text:
                 return
 
-            # 后处理与发送
-            await self._send_smart_reply(wx, event, reply_text)
-        
             # IPC 记录出口消息
             self.ipc.log_message("Bot", reply_text, "outgoing", event.sender)
-        
-            # 广播事件
+
             asyncio.create_task(self.bot_manager.broadcast_event("message", {
                 "direction": "outgoing",
+                "chat_id": chat_id,
+                "chat_name": event.chat_name,
                 "sender": "Bot",
                 "content": reply_text,
-                "recipient": event.sender,
+                "recipient": event.chat_name,
                 "timestamp": time.time()
             }))
-        
-            # 更新记忆（助手）
-            if self.memory:
-                await self.memory.add_message(chat_id, "assistant", reply_text)
-                
-            # 异步更新向量数据库
-            if self.vector_memory:
-                asyncio.create_task(self._update_vector_db(chat_id, user_text, reply_text))
 
-            # 事实提取（后台）
-            if user_profile and self.bot_cfg.get("remember_facts_enabled", False):
-                # 发后即忘的任务
-                asyncio.create_task(
-                    self._extract_facts_background(chat_id, user_text, reply_text, user_profile)
-                )
+            await self.ai_client.finalize_request(
+                prepared,
+                reply_text,
+                self._runtime_dependencies(),
+            )
+            self._record_reply_stats(user_text, reply_text)
         finally:
             if image_path and os.path.exists(image_path):
                 await asyncio.to_thread(os.remove, image_path)
 
-    async def _analyze_emotion(self, chat_id: str, text: str) -> Optional[EmotionResult]:
-        mode = str(self.bot_cfg.get("emotion_detection_mode", "keywords")).lower()
-        if mode == "ai" and self.ai_client:
-            prompt = get_emotion_analysis_prompt(text)
-            resp = await self.ai_client.generate_reply(
-                f"__emotion__{chat_id}", 
-                prompt,
-                system_prompt="你是一个情感分析助手，只返回 JSON 格式的分析结果。"
+    def _runtime_dependencies(self) -> Dict[str, Any]:
+        return {
+            "memory": self.memory,
+            "vector_memory": self.vector_memory,
+            "export_rag": self.export_rag,
+        }
+
+    def _get_chat_lock(self, chat_id: str) -> asyncio.Lock:
+        lock = self.chat_locks.get(chat_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self.chat_locks[chat_id] = lock
+        return lock
+
+    async def _stream_smart_reply(
+        self,
+        wx: "WeChat",
+        event: MessageEvent,
+        prepared: Any,
+    ) -> str:
+        chunk_size = as_int(self.bot_cfg.get("reply_chunk_size", 500), 500)
+        delay_sec = as_float(self.bot_cfg.get("reply_chunk_delay_sec", 0.0), 0.0)
+        min_interval = as_float(self.bot_cfg.get("min_reply_interval_sec", 0.2), 0.2)
+        stream_buffer_chars = as_int(self.bot_cfg.get("stream_buffer_chars", 30), 30, min_value=1)
+        stream_chunk_max = as_int(self.bot_cfg.get("stream_chunk_max_chars", 200), 200, min_value=1)
+
+        emoji_policy = str(self.bot_cfg.get("emoji_policy", "wechat"))
+        replacements = self.bot_cfg.get("emoji_replacements")
+
+        quote_mode = str(self.bot_cfg.get("reply_quote_mode", "wechat") or "wechat").lower()
+        quote_template = str(self.bot_cfg.get("reply_quote_template") or "引用：{content}\n")
+        quote_max_chars = as_int(self.bot_cfg.get("reply_quote_max_chars", 120), 120, min_value=0)
+        quote_timeout_sec = as_float(self.bot_cfg.get("reply_quote_timeout_sec", 5.0), 5.0, min_value=0.0)
+        quote_fallback_to_text = bool(self.bot_cfg.get("reply_quote_fallback_to_text", True))
+
+        quote_text = ""
+        if quote_max_chars > 0:
+            quote_content = str(event.content or "").strip()
+            if quote_content:
+                if quote_max_chars and len(quote_content) > quote_max_chars:
+                    quote_content = quote_content[:quote_max_chars]
+                try:
+                    quote_text = quote_template.format(
+                        content=quote_content,
+                        sender=event.sender or "",
+                        chat=event.chat_name or "",
+                    )
+                except Exception:
+                    quote_text = f"引用：{quote_content}\n"
+
+        quote_item = None
+        quote_fallback_text = None
+        if quote_mode == "wechat":
+            raw_item = getattr(event, "raw_item", None)
+            if raw_item is not None and callable(getattr(raw_item, "quote", None)):
+                quote_item = raw_item
+            if quote_item and quote_text and quote_fallback_to_text:
+                quote_fallback_text = quote_text
+        elif quote_mode == "text":
+            quote_fallback_text = quote_text
+
+        emitted = False
+        first_quote_item = quote_item
+        first_quote_fallback = quote_fallback_text
+        buffer = ""
+        collected_parts: List[str] = []
+
+        async for raw_chunk in self.ai_client.stream_reply(prepared):
+            chunk = str(raw_chunk or "")
+            if not chunk:
+                continue
+            collected_parts.append(chunk)
+            buffer += chunk
+
+            if len(buffer) < stream_buffer_chars and len(buffer) < stream_chunk_max:
+                continue
+
+            flush_now = len(buffer) >= stream_chunk_max or any(
+                mark in buffer for mark in ("。", "！", "？", "\n", ".", "!", "?")
             )
-            if resp:
-                result = parse_emotion_ai_response(resp)
-                if result:
+            if not flush_now:
+                continue
 
-                    return result
-        
-        return detect_emotion_keywords(text)
+            sanitized = self._sanitize_reply_segment(buffer)
+            if sanitized:
+                if not emitted and quote_mode == "text" and first_quote_fallback:
+                    sanitized = f"{first_quote_fallback}{sanitized}"
+                    first_quote_fallback = None
+                await send_reply_chunks(
+                    wx,
+                    event.chat_name,
+                    sanitized,
+                    self.bot_cfg,
+                    chunk_size,
+                    delay_sec,
+                    min_interval,
+                    self.last_reply_ts,
+                    self.wx_lock,
+                    quote_item=first_quote_item if not emitted else None,
+                    quote_timeout_sec=quote_timeout_sec,
+                    quote_fallback_text=first_quote_fallback if not emitted else None,
+                )
+                emitted = True
+                first_quote_item = None
+                first_quote_fallback = None
+                buffer = ""
 
-    async def _update_vector_db(self, chat_id: str, user_text: str, reply_text: str) -> None:
-        """后台更新向量数据库"""
-        try:
-            if not self.vector_memory:
-                return
+        if buffer:
+            sanitized = self._sanitize_reply_segment(buffer)
+            if sanitized:
+                if not emitted and quote_mode == "text" and first_quote_fallback:
+                    sanitized = f"{first_quote_fallback}{sanitized}"
+                    first_quote_fallback = None
+                await send_reply_chunks(
+                    wx,
+                    event.chat_name,
+                    sanitized,
+                    self.bot_cfg,
+                    chunk_size,
+                    delay_sec,
+                    min_interval,
+                    self.last_reply_ts,
+                    self.wx_lock,
+                    quote_item=first_quote_item if not emitted else None,
+                    quote_timeout_sec=quote_timeout_sec,
+                    quote_fallback_text=first_quote_fallback if not emitted else None,
+                )
+                emitted = True
 
-            user_embedding = None
-            reply_embedding = None
-            if self.ai_client:
-                user_embedding = await self.ai_client.get_embedding(user_text)
-                reply_embedding = await self.ai_client.get_embedding(reply_text)
-
-            await asyncio.to_thread(
-                self.vector_memory.add_text,
-                user_text,
-                metadata={
-                    "chat_id": chat_id,
-                    "role": "user",
-                    "timestamp": time.time(),
-                    "source": "runtime_chat",
-                },
-                id=f"{chat_id}_u_{time.time()}",
-                embedding=user_embedding
+        suffix = self._build_reply_suffix_text()
+        if suffix and emitted:
+            await send_reply_chunks(
+                wx,
+                event.chat_name,
+                suffix,
+                self.bot_cfg,
+                chunk_size,
+                delay_sec,
+                min_interval,
+                self.last_reply_ts,
+                self.wx_lock,
             )
-            
-            await asyncio.to_thread(
-                self.vector_memory.add_text,
-                reply_text,
-                metadata={
-                    "chat_id": chat_id,
-                    "role": "assistant",
-                    "timestamp": time.time(),
-                    "source": "runtime_chat",
-                },
-                id=f"{chat_id}_a_{time.time()}",
-                embedding=reply_embedding
-            )
-        except Exception as e:
-            logging.error(f"Vector DB update failed: {e}")
 
-    async def _extract_facts_background(
-        self, chat_id: str, user_text: str, assistant_reply: str, user_profile: Any
-    ) -> None:
-        """后台异步提取事实"""
-        try:
-            if not self.ai_client:
-                return
-
-            existing_facts = user_profile.context_facts
-            prompt = get_fact_extraction_prompt(user_text, assistant_reply, existing_facts)
-            
-            # 使用 AI 分析
-            resp = await self.ai_client.generate_reply(
-                f"__facts__{chat_id}",
-                prompt,
-                system_prompt="你是一个信息提取助手，只返回 JSON 格式的结果。"
-            )
-            
-            if not resp:
-                return
-                
-            new_facts, relationship_hint, traits = parse_fact_extraction_response(resp)
-            
-            if not self.memory:
-                return
-                
-            # 1. 保存新事实
-            if new_facts:
-                for fact in new_facts:
-                    await self.memory.add_context_fact(chat_id, fact)
-                logging.info(f"提取到新事实 [{chat_id}]: {new_facts}")
-            
-            # 2. 更新性格特征
-            if traits:
-                current_traits = user_profile.personality
-                # 简单追加，实际可能需要更复杂的合并逻辑
-                updated_traits = f"{current_traits} {','.join(traits)}".strip()
-                # 限制长度防止无限增长
-                if len(updated_traits) > 200:
-                    updated_traits = updated_traits[-200:]
-                await self.memory.update_user_profile(chat_id, personality=updated_traits)
-            
-            # 3. 关系演进（结合互动次数）
-            if relationship_hint:
-                # AI 建议的关系
-                # 这里可以加个逻辑：只有当 AI 建议的关系比当前关系更"亲密"时才更新
-                # 或者简单信任 AI
-                pass
-            
-            # 基于规则的关系演进
-            msg_count = user_profile.message_count
-            current_rel = user_profile.relationship
-            new_rel = get_relationship_evolution_hint(msg_count, current_rel)
-            
-            if new_rel and new_rel != current_rel:
-                await self.memory.update_user_profile(chat_id, relationship=new_rel)
-                logging.info(f"关系升级 [{chat_id}]: {current_rel} -> {new_rel}")
-                
-        except Exception as e:
-            logging.error(f"事实提取任务失败: {e}")
-        
+        return "".join(collected_parts)
 
 
     async def _send_smart_reply(self, wx: "WeChat", event: MessageEvent, reply_text: str) -> None:
         chunk_size = as_int(self.bot_cfg.get("reply_chunk_size", 500), 500)
         delay_sec = as_float(self.bot_cfg.get("reply_chunk_delay_sec", 0.0), 0.0)
         min_interval = as_float(self.bot_cfg.get("min_reply_interval_sec", 0.2), 0.2)
-        
-        emoji_policy = str(self.bot_cfg.get("emoji_policy", "wechat"))
-        replacements = self.bot_cfg.get("emoji_replacements")
-        
-        refined_reply = refine_reply_text(reply_text)
-        sanitized_reply = sanitize_reply_text(refined_reply, emoji_policy, replacements)
-        reply_suffix = str(self.bot_cfg.get("reply_suffix") or "").strip()
-        if reply_suffix:
-            model_name = ""
-            if self.ai_client:
-                model_name = getattr(self.ai_client, "model", "") or ""
-            alias = get_model_alias(self.ai_client)
-            suffix = build_reply_suffix(reply_suffix, model_name, alias)
-            sanitized_reply = f"{sanitized_reply}{suffix}"
+        sanitized_reply = self._build_final_reply_text(reply_text)
 
         quote_mode = str(self.bot_cfg.get("reply_quote_mode", "wechat") or "wechat").lower()
         quote_template = str(self.bot_cfg.get("reply_quote_template") or "引用：{content}\n")
@@ -979,6 +998,34 @@ class WeChatBot:
                 quote_fallback_text=quote_fallback_text
             )
 
+    def _sanitize_reply_segment(self, reply_text: str) -> str:
+        emoji_policy = str(self.bot_cfg.get("emoji_policy", "wechat"))
+        replacements = self.bot_cfg.get("emoji_replacements")
+        refined_reply = refine_reply_text(reply_text)
+        return sanitize_reply_text(refined_reply, emoji_policy, replacements)
+
+    def _build_final_reply_text(self, reply_text: str) -> str:
+        sanitized = self._sanitize_reply_segment(reply_text)
+        suffix = self._build_reply_suffix_text()
+        return f"{sanitized}{suffix}" if suffix else sanitized
+
+    def _build_reply_suffix_text(self) -> str:
+        reply_suffix = str(self.bot_cfg.get("reply_suffix") or "").strip()
+        if not reply_suffix:
+            return ""
+        model_name = getattr(self.ai_client, "model", "") if self.ai_client else ""
+        alias = get_model_alias(self.ai_client)
+        return build_reply_suffix(reply_suffix, model_name or "", alias)
+
+    def _record_reply_stats(self, user_text: str, reply_text: str) -> None:
+        state = get_bot_state()
+        tokens = 0
+        if self.bot_cfg.get("usage_tracking_enabled", True):
+            _, _, tokens = estimate_exchange_tokens(self.ai_client, user_text, reply_text)
+        state.add_reply(tokens)
+        self.bot_manager._invalidate_status_cache()
+        asyncio.create_task(self.bot_manager.notify_status_change())
+
     async def _execute_ipc_command(self, wx: "WeChat", cmd: Dict) -> None:
         """执行来自 Web 的 IPC 命令"""
         try:
@@ -1029,27 +1076,43 @@ class WeChatBot:
             # 广播事件
             asyncio.create_task(self.bot_manager.broadcast_event("message", {
                 "direction": "outgoing",
+                "chat_id": target,
+                "chat_name": target,
                 "sender": "API",
                 "content": content,
                 "recipient": target,
                 "timestamp": time.time()
             }))
-            
-            # 记录到记忆
-            if self.memory:
-                # 尝试猜测 chat_id
-                # 注意：这里 target 可能是昵称，memory 需要 wx_id
-                # 暂时存 target，或者如果 access memory 失败也无所谓
-                # 更好的做法是 bot 内部维护 target -> wx_id 映射，但现在没有
-                # 先简单记录为 target
-                chat_id = target
-                # Check if group
-                # logic to detect group vs friend is tricky without wx object details
-                # Assume friend for now or just log
-                await self.memory.add_message(chat_id, "assistant", content)
 
             return {'success': True, 'message': '发送成功'}
         except Exception as e:
             logging.error(f"消息发送失败: {e}")
             return {'success': False, 'message': f'发送失败: {str(e)}'}
+
+    def get_stats(self) -> Dict[str, Any]:
+        state = get_bot_state()
+        return {
+            "today_replies": state.today_replies,
+            "today_tokens": state.today_tokens,
+            "total_replies": state.total_replies,
+            "total_tokens": state.total_tokens,
+        }
+
+    def get_transport_status(self) -> Dict[str, Any]:
+        if self.wx and hasattr(self.wx, "get_transport_status"):
+            try:
+                return dict(self.wx.get_transport_status())
+            except Exception as exc:
+                logging.debug("获取 transport 状态失败: %s", exc)
+        return {
+            "transport_backend": "compat_ui",
+            "silent_mode": False,
+            "wechat_version": "",
+            "required_wechat_version": "",
+            "compat_mode": True,
+            "supports_native_quote": True,
+            "supports_voice_transcription": True,
+            "transport_status": "connected" if self.wx else "disconnected",
+            "transport_warning": "",
+        }
 

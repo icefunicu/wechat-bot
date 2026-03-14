@@ -8,6 +8,7 @@
 import asyncio
 import logging
 import os
+import time
 from typing import Any, Dict, Optional, Set
 
 logger = logging.getLogger(__name__)
@@ -107,13 +108,14 @@ class BotManager:
             
             try:
                 from backend.bot import WeChatBot
-                import time
+                from backend.core.bot_control import get_bot_state
                 
                 # 使用提供的配置路径或默认路径
                 path = config_path or self.config_path
                 
                 # 重置停止事件
                 self.stop_event.clear()
+                state = get_bot_state()
                 
                 # 创建机器人实例
                 self.bot = WeChatBot(path, memory_manager=self.get_memory_manager())
@@ -125,9 +127,12 @@ class BotManager:
                 self.task = asyncio.create_task(self._run_bot())
                 
                 self.is_running = True
-                self.is_paused = False
+                self.is_paused = bool(state.is_paused)
                 self.start_time = time.time()
+                state.start_time = self.start_time
+                state.save()
                 self._invalidate_status_cache()
+                await self.notify_status_change()
                 
                 logger.info("机器人启动成功")
                 return {'success': True, 'message': '机器人已启动'}
@@ -152,6 +157,7 @@ class BotManager:
             self.is_running = False
             self.start_time = None
             self._invalidate_status_cache()
+            await self.notify_status_change()
             logger.info("机器人已停止")
     
     async def stop(self) -> Dict[str, Any]:
@@ -192,6 +198,7 @@ class BotManager:
                 self.is_paused = False
                 self.start_time = None
                 self._invalidate_status_cache()
+                await self.notify_status_change()
                 
                 logger.info("机器人停止成功")
                 return {'success': True, 'message': '机器人已停止'}
@@ -200,20 +207,15 @@ class BotManager:
                 logger.error(f"停止机器人失败: {e}")
                 return {'success': False, 'message': f'停止失败: {str(e)}'}
     
-    async def pause(self) -> Dict[str, Any]:
+    async def pause(self, reason: str = "用户暂停") -> Dict[str, Any]:
         """暂停机器人"""
         if not self.is_running:
             return {'success': False, 'message': '机器人未在运行'}
         
         if self.is_paused:
             return {'success': False, 'message': '机器人已暂停'}
-        
-        self.is_paused = True
-        self._invalidate_status_cache()
-        
-        # 通知 bot 暂停（如果支持）
-        if self.bot and hasattr(self.bot, 'pause'):
-            self.bot.pause()
+
+        await self.apply_pause_state(True, reason=reason, propagate_to_bot=True)
         
         logger.info("机器人已暂停")
         return {'success': True, 'message': '机器人已暂停'}
@@ -225,13 +227,8 @@ class BotManager:
         
         if not self.is_paused:
             return {'success': False, 'message': '机器人未暂停'}
-        
-        self.is_paused = False
-        self._invalidate_status_cache()
-        
-        # 通知 bot 恢复（如果支持）
-        if self.bot and hasattr(self.bot, 'resume'):
-            self.bot.resume()
+
+        await self.apply_pause_state(False, propagate_to_bot=True)
         
         logger.info("机器人已恢复")
         return {'success': True, 'message': '机器人已恢复'}
@@ -287,13 +284,23 @@ class BotManager:
         return self._get_stats()
 
     def _get_stats(self) -> Dict[str, Any]:
-        import time
-
         now = time.time()
         if self._stats_cache and (now - self._stats_cache_time) < self._stats_cache_ttl:
             return dict(self._stats_cache)
 
         stats = self.stats.copy()
+        try:
+            from backend.core.bot_control import get_bot_state
+
+            state = get_bot_state()
+            stats.update({
+                'today_replies': state.today_replies,
+                'today_tokens': state.today_tokens,
+                'total_replies': state.total_replies,
+                'total_tokens': state.total_tokens,
+            })
+        except Exception:
+            pass
         if self.bot and hasattr(self.bot, 'get_stats'):
             try:
                 bot_stats = self.bot.get_stats()
@@ -314,8 +321,6 @@ class BotManager:
         Returns:
             状态信息字典
         """
-        import time
-
         now = time.time()
         if self._status_cache and (now - self._status_cache_time) < self._status_cache_ttl:
             return dict(self._status_cache)
@@ -336,7 +341,9 @@ class BotManager:
             'uptime': uptime,
             'today_replies': stats.get('today_replies', 0),
             'today_tokens': stats.get('today_tokens', 0),
-            'total_replies': stats.get('total_replies', 0)
+            'total_replies': stats.get('total_replies', 0),
+            'total_tokens': stats.get('total_tokens', 0),
+            'engine': 'langgraph',
         }
         if self.bot and hasattr(self.bot, 'get_export_rag_status'):
             try:
@@ -358,6 +365,16 @@ class BotManager:
                 }
             except Exception:
                 status['export_rag'] = None
+        if self.bot and hasattr(self.bot, 'get_agent_status'):
+            try:
+                status.update(self.bot.get_agent_status())
+            except Exception:
+                pass
+        if self.bot and hasattr(self.bot, 'get_transport_status'):
+            try:
+                status.update(self.bot.get_transport_status())
+            except Exception:
+                pass
         self._status_cache = status
         self._status_cache_time = now
         return dict(status)
@@ -367,6 +384,29 @@ class BotManager:
         self._status_cache_time = 0.0
         self._stats_cache = None
         self._stats_cache_time = 0.0
+
+    async def apply_pause_state(
+        self,
+        paused: bool,
+        *,
+        reason: str = "",
+        propagate_to_bot: bool = False,
+    ) -> None:
+        from backend.core.bot_control import get_bot_state
+
+        state = get_bot_state()
+        state.set_paused(paused, reason if paused else "")
+        self.is_paused = paused
+        if propagate_to_bot and self.bot:
+            if paused and hasattr(self.bot, 'pause'):
+                self.bot.pause()
+            elif not paused and hasattr(self.bot, 'resume'):
+                self.bot.resume()
+        self._invalidate_status_cache()
+        await self.notify_status_change()
+
+    async def notify_status_change(self) -> None:
+        await self.broadcast_event("status_change", self.get_status())
 
     async def broadcast_event(self, event_type: str, data: Any) -> None:
         """

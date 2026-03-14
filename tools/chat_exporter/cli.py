@@ -65,8 +65,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--output-dir",
-        default="chat_exports",
-        help="Export output directory (default: chat_exports).",
+        default=os.path.join("data", "chat_exports"),
+        help="Export output directory (default: data/chat_exports).",
     )
     parser.add_argument(
         "--contact",

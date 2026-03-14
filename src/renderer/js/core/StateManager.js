@@ -10,7 +10,8 @@ class StateManager {
             bot: {
                 running: false,
                 paused: false,
-                connected: false
+                connected: false,
+                status: null
             },
             updater: {
                 enabled: false,

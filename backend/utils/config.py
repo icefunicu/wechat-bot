@@ -76,7 +76,7 @@ def is_placeholder_key(key: Optional[str]) -> bool:
     if not key:
         return True
     k = key.strip()
-    return k.startswith("YOUR_") or "KEY" in k and len(k) < 10
+    return k.startswith("YOUR_") or ("KEY" in k and len(k) < 10)
 
 
 def build_api_candidates(api_cfg: Dict[str, Any]) -> List[Dict[str, Any]]:

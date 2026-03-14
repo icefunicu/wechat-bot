@@ -30,6 +30,7 @@ class App {
         this._lastStatusSignature = null;
         this._lastUpdateToastVersion = '';
         this._removeUpdateListener = null;
+        this._eventSource = null;
     }
 
     async init() {
@@ -50,6 +51,7 @@ class App {
 
         await this._checkBackendConnection();
         await this._refreshStatus();
+        this._connectSSE();
         await this._switchPage('dashboard');
         this._startStatusRefresh();
 
@@ -376,20 +378,7 @@ class App {
         this._statusRefreshing = true;
         try {
             const status = await apiService.getStatus();
-
-            stateManager.batchUpdate({
-                'bot.running': status.running,
-                'bot.paused': status.is_paused,
-                'bot.connected': true
-            });
-
-            const statusSignature = JSON.stringify(status);
-            if (this.pages.dashboard && statusSignature !== this._lastStatusSignature) {
-                this.pages.dashboard.updateStats(status);
-                this._lastStatusSignature = statusSignature;
-            }
-
-            this._updateConnectionStatus();
+            this._applyStatus(status, { connected: true });
             this._statusFailureCount = 0;
         } catch (error) {
             console.error('[App] 刷新状态失败:', error);
@@ -399,6 +388,54 @@ class App {
         } finally {
             this._statusRefreshing = false;
             this._scheduleNextStatusRefresh(this._getNextStatusIntervalMs());
+        }
+    }
+
+    _applyStatus(status, options = {}) {
+        if (!status || typeof status !== 'object') {
+            return;
+        }
+        stateManager.batchUpdate({
+            'bot.running': !!status.running,
+            'bot.paused': !!status.is_paused,
+            'bot.connected': options.connected !== false,
+            'bot.status': status
+        });
+
+        const statusSignature = JSON.stringify(status);
+        if (this.pages.dashboard && statusSignature !== this._lastStatusSignature) {
+            this.pages.dashboard.updateStats(status);
+            this._lastStatusSignature = statusSignature;
+        }
+
+        this._updateConnectionStatus();
+    }
+
+    _connectSSE() {
+        if (this._eventSource) {
+            return;
+        }
+        this._eventSource = apiService.connectSSE(
+            (payload) => this._handleRealtimeEvent(payload),
+            () => {
+                stateManager.set('bot.connected', false);
+                this._updateConnectionStatus();
+            }
+        );
+    }
+
+    _handleRealtimeEvent(payload) {
+        if (!payload || typeof payload !== 'object') {
+            return;
+        }
+        if (payload.type === 'status_change' && payload.data) {
+            this._applyStatus(payload.data, { connected: true });
+            return;
+        }
+        if (payload.type === 'message' && payload.data) {
+            stateManager.set('bot.connected', true);
+            this._updateConnectionStatus();
+            eventBus.emit(Events.MESSAGE_RECEIVED, payload.data);
         }
     }
 

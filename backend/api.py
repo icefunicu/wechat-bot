@@ -44,13 +44,18 @@ def _mask_preset(preset: dict) -> dict:
     )
 
     key = masked.get("api_key", "")
-    if key and not key.startswith("YOUR_"):
+    allow_empty = bool(masked.get("allow_empty_key", False))
+    if allow_empty:
+        # 不需要 Key 的服务（如 Ollama），直接视为已就绪
+        masked["api_key_configured"] = True
+        masked["api_key_masked"] = ""
+    elif key and not key.startswith("YOUR_"):
         masked["api_key_configured"] = True
         masked["api_key_masked"] = key[:8] + "****" + key[-4:] if len(key) > 12 else "****"
     else:
         masked["api_key_configured"] = False
         masked["api_key_masked"] = ""
-    masked["api_key_required"] = not bool(masked.get("allow_empty_key", False))
+    masked["api_key_required"] = not allow_empty
 
     masked.pop("api_key", None)
     return masked
@@ -60,16 +65,21 @@ def _build_config_payload() -> dict:
     from backend.config import CONFIG
 
     api_cfg = CONFIG.get('api', {})
+    agent_cfg = dict(CONFIG.get('agent', {}))
     presets = []
     for preset in api_cfg.get('presets', []):
         presets.append(_mask_preset(preset))
 
     api_cfg_safe = api_cfg.copy()
     api_cfg_safe['presets'] = presets
+    langsmith_key = str(agent_cfg.get('langsmith_api_key') or '').strip()
+    agent_cfg['langsmith_api_key_configured'] = bool(langsmith_key)
+    agent_cfg.pop('langsmith_api_key', None)
     return {
         'api': api_cfg_safe,
         'bot': CONFIG.get('bot', {}),
-        'logging': CONFIG.get('logging', {})
+        'logging': CONFIG.get('logging', {}),
+        'agent': agent_cfg,
     }
 
 
@@ -158,7 +168,9 @@ async def stop_bot():
 @app.route('/api/pause', methods=['POST'])
 async def pause_bot():
     """暂停机器人"""
-    result = await manager.pause()
+    data = await request.get_json(silent=True) or {}
+    reason = str(data.get('reason') or '用户暂停').strip() or '用户暂停'
+    result = await manager.pause(reason)
     return jsonify(result)
 
 
@@ -181,13 +193,30 @@ async def get_messages():
     """获取消息历史"""
     try:
         limit = request.args.get('limit', 50, type=int)
+        offset = request.args.get('offset', 0, type=int)
+        chat_id = request.args.get('chat_id', '', type=str)
+        keyword = request.args.get('keyword', '', type=str)
         
         # 使用共享的 MemoryManager 实例
         mem_mgr = manager.get_memory_manager()
         
-        messages = await mem_mgr.get_global_recent_messages(limit=limit)
+        page = await mem_mgr.get_message_page(
+            limit=limit,
+            offset=offset,
+            chat_id=chat_id,
+            keyword=keyword,
+        )
+        chats = await mem_mgr.list_chat_summaries()
             
-        return jsonify({'success': True, 'messages': messages})
+        return jsonify({
+            'success': True,
+            'messages': page['messages'],
+            'total': page['total'],
+            'limit': page['limit'],
+            'offset': page['offset'],
+            'has_more': page['has_more'],
+            'chats': chats,
+        })
     except Exception as e:
         logger.error(f"获取消息失败: {e}")
         return jsonify({'success': False, 'message': f'获取消息失败: {str(e)}'})
@@ -292,6 +321,10 @@ async def save_config():
             for section, settings in new_data.items():
                 if section not in existing:
                     existing[section] = {}
+
+                if section == 'agent' and isinstance(settings, dict):
+                    settings = dict(settings)
+                    settings.pop('langsmith_api_key_configured', None)
                 
                 # 特殊处理 api.presets 的 API Key 保护
                 if section == 'api' and 'presets' in settings:
