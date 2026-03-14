@@ -113,7 +113,7 @@ CONFIG = {
                 "alias": '本地', # 模型别名
                 "base_url": 'http://127.0.0.1:11434/v1',  # 本地 Ollama OpenAI 兼容地址
                 "api_key": "",  # Ollama 默认无需密钥
-                "model": 'qwen3',  # 默认模型名称
+                "model": 'deepseek-v3.2:cloud',  # 默认模型名称
                 "timeout_sec": 20,  # 本地首轮加载可能更慢
                 "max_retries": 1,  # 本地模型不需要太多重试
                 "temperature": 0.6,  # 温度
