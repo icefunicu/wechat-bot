@@ -2,6 +2,7 @@
 data/api_keys.py
 data/*.db
 data/*.db-*
+data/chat_history.jsonl
 data/config_override.json
 chat_exports/
 
